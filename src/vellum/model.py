@@ -3,9 +3,10 @@ from typing import Any, ClassVar, TypeVar
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic._internal._model_construction import ModelMetaclass
 
 from vellum.hooks import HooksMixin
-from vellum.query import FieldsProxy
+from vellum.query import FieldRef, FieldsProxy
 
 
 class OptimisticConcurrencyMixin(BaseModel):
@@ -21,7 +22,19 @@ class SoftDeleteMixin(BaseModel):
 T = TypeVar("T", bound="VellumBaseModel")
 
 
-class VellumBaseModel(HooksMixin, BaseModel):
+class VellumMetaclass(ModelMetaclass):
+    def __getattr__(cls, name: str) -> Any:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        fields = cls.__dict__.get("__pydantic_fields__", {})
+        if name in fields:
+            return FieldRef(name)
+        raise AttributeError(
+            f"{cls.__name__} has no attribute {name!r}"
+        )
+
+
+class VellumBaseModel(HooksMixin, BaseModel, metaclass=VellumMetaclass):
 
     id: UUID = Field(default_factory=uuid4, alias="_id")
     created_at: datetime.datetime = Field(

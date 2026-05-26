@@ -302,6 +302,12 @@ class FieldRef:
     def __hash__(self) -> int:
         return hash(self._field)
 
+    def __pos__(self) -> SortSpec:
+        return SortSpec(self._field, 1)
+
+    def __neg__(self) -> SortSpec:
+        return SortSpec(self._field, -1)
+
     def in_(self, values: list[Any]) -> In:
         return In(self._field, values)
 
