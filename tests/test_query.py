@@ -1,7 +1,19 @@
 from vellum.query import (
-    And, Eq, ElemMatch, Exists, Gt, Gte, In, Lt, Lte, Ne, Nor, NotIn,
-    Or, Regex, Size, All, Not,
-    eq, ne, gt, gte, lt, lte,
+    All,
+    ElemMatch,
+    Eq,
+    Exists,
+    Gt,
+    Gte,
+    In,
+    Lt,
+    Lte,
+    Ne,
+    Nor,
+    Not,
+    NotIn,
+    Regex,
+    Size,
 )
 
 

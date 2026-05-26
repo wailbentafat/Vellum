@@ -1,6 +1,6 @@
 import pytest
 import pytest_asyncio
-from motor.motor_asyncio import AsyncIOMotorClient
+
 from vellum.model import VellumBaseModel
 from vellum.repository import VellumRepository
 

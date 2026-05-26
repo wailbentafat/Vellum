@@ -1,8 +1,8 @@
 import pytest
 import pytest_asyncio
+
 from vellum.model import VellumBaseModel
 from vellum.repository import VellumRepository
-
 
 delete_hook_log: list[str] = []
 
@@ -94,6 +94,7 @@ async def test_delete_hooks_called(repo):
 @pytest.mark.asyncio
 async def test_hook_can_cancel_insert(repo):
     import pytest
+
     from vellum.exceptions import HookError
 
     class StrictItem(VellumBaseModel):

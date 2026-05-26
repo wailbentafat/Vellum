@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 from uuid import UUID
 
 MongoFieldPath = str
@@ -8,7 +8,7 @@ MongoFieldPath = str
 
 class QueryExpression:
 
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         raise NotImplementedError
 
     def __and__(self, other: QueryExpression) -> And:
@@ -34,37 +34,37 @@ class FieldQueryExpression(QueryExpression):
 
 
 class Eq(FieldQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         return {self.field: self._to_mongo_value(self.value)}
 
 
 class Ne(FieldQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         return {self.field: {"$ne": self._to_mongo_value(self.value)}}
 
 
 class Gt(FieldQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         return {self.field: {"$gt": self._to_mongo_value(self.value)}}
 
 
 class Gte(FieldQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         return {self.field: {"$gte": self._to_mongo_value(self.value)}}
 
 
 class Lt(FieldQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         return {self.field: {"$lt": self._to_mongo_value(self.value)}}
 
 
 class Lte(FieldQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         return {self.field: {"$lte": self._to_mongo_value(self.value)}}
 
 
 class In(FieldQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         if not isinstance(self.value, (list, tuple, set)):
             raise TypeError(f"$in requires a list/tuple/set, got {type(self.value)}")
         converted = [self._to_mongo_value(v) for v in self.value]
@@ -72,7 +72,7 @@ class In(FieldQueryExpression):
 
 
 class NotIn(FieldQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         if not isinstance(self.value, (list, tuple, set)):
             raise TypeError(f"$nin requires a list/tuple/set, got {type(self.value)}")
         converted = [self._to_mongo_value(v) for v in self.value]
@@ -80,7 +80,7 @@ class NotIn(FieldQueryExpression):
 
 
 class All(FieldQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         if not isinstance(self.value, (list, tuple, set)):
             raise TypeError(f"$all requires a list/tuple/set, got {type(self.value)}")
         converted = [self._to_mongo_value(v) for v in self.value]
@@ -88,7 +88,7 @@ class All(FieldQueryExpression):
 
 
 class Size(FieldQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         return {self.field: {"$size": self.value}}
 
 
@@ -98,26 +98,26 @@ class ElemMatch(QueryExpression):
         self.field = field
         self.expression = expression
 
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         return {self.field: {"$elemMatch": self.expression.to_mongo_query()}}
 
 
 class Exists(FieldQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         return {self.field: {"$exists": bool(self.value)}}
 
 
 class Regex(QueryExpression):
 
     def __init__(
-        self, field: MongoFieldPath, pattern: str, options: Optional[str] = None
+        self, field: MongoFieldPath, pattern: str, options: str | None = None
     ) -> None:
         self.field = field
         self.pattern = pattern
         self.options = options
 
-    def to_mongo_query(self) -> Dict[str, Any]:
-        expr: Dict[str, Any] = {"$regex": self.pattern}
+    def to_mongo_query(self) -> dict[str, Any]:
+        expr: dict[str, Any] = {"$regex": self.pattern}
         if self.options:
             expr["$options"] = self.options
         return {self.field: expr}
@@ -132,17 +132,17 @@ class LogicalQueryExpression(QueryExpression):
 
 
 class And(LogicalQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         return {"$and": [e.to_mongo_query() for e in self.expressions]}
 
 
 class Or(LogicalQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         return {"$or": [e.to_mongo_query() for e in self.expressions]}
 
 
 class Nor(LogicalQueryExpression):
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         return {"$nor": [e.to_mongo_query() for e in self.expressions]}
 
 
@@ -151,7 +151,7 @@ class Not(LogicalQueryExpression):
     def __init__(self, expression: QueryExpression) -> None:
         super().__init__(expression)
 
-    def to_mongo_query(self) -> Dict[str, Any]:
+    def to_mongo_query(self) -> dict[str, Any]:
         return {"$nor": [e.to_mongo_query() for e in self.expressions]}
 
 
@@ -179,11 +179,11 @@ def lte(field: MongoFieldPath, value: Any) -> Lte:
     return Lte(field, value)
 
 
-def in_(field: MongoFieldPath, values: List[Any]) -> In:
+def in_(field: MongoFieldPath, values: list[Any]) -> In:
     return In(field, values)
 
 
-def not_in(field: MongoFieldPath, values: List[Any]) -> NotIn:
+def not_in(field: MongoFieldPath, values: list[Any]) -> NotIn:
     return NotIn(field, values)
 
 
@@ -191,7 +191,7 @@ def exists(field: MongoFieldPath, value: bool = True) -> Exists:
     return Exists(field, value)
 
 
-def regex(field: MongoFieldPath, pattern: str, options: Optional[str] = None) -> Regex:
+def regex(field: MongoFieldPath, pattern: str, options: str | None = None) -> Regex:
     return Regex(field, pattern, options)
 
 
@@ -199,7 +199,7 @@ def size(field: MongoFieldPath, count: int) -> Size:
     return Size(field, count)
 
 
-def all_(field: MongoFieldPath, values: List[Any]) -> All:
+def all_(field: MongoFieldPath, values: list[Any]) -> All:
     return All(field, values)
 
 

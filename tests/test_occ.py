@@ -1,8 +1,9 @@
 import pytest
 import pytest_asyncio
-from vellum.model import VellumBaseModel, OptimisticConcurrencyMixin
-from vellum.repository import VellumRepository
+
 from vellum.exceptions import OptimisticLockError
+from vellum.model import OptimisticConcurrencyMixin, VellumBaseModel
+from vellum.repository import VellumRepository
 
 
 class VersionedProduct(OptimisticConcurrencyMixin, VellumBaseModel):

@@ -1,9 +1,11 @@
+from uuid import uuid4
+
 import pytest
 import pytest_asyncio
-from uuid import uuid4
+
+from vellum.exceptions import DocumentNotFoundError
 from vellum.model import VellumBaseModel
 from vellum.repository import VellumRepository
-from vellum.exceptions import DocumentNotFoundError
 
 
 class Product(VellumBaseModel):

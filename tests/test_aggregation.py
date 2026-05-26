@@ -1,9 +1,10 @@
+from pydantic import BaseModel
 import pytest
 import pytest_asyncio
-from pydantic import BaseModel
+
+from vellum.aggregation import AggregationPipeline
 from vellum.model import VellumBaseModel
 from vellum.repository import VellumRepository
-from vellum.aggregation import AggregationPipeline
 
 
 class Sale(VellumBaseModel):
@@ -88,7 +89,13 @@ async def test_pipeline_with_output_model(sale_repo):
 async def test_pipeline_unwind(sale_repo):
     from motor.motor_asyncio import AsyncIOMotorCollection
     col: AsyncIOMotorCollection = sale_repo.collection
-    await col.insert_one({"tags": ["fresh", "organic"], "product": "Apple", "quantity": 1, "price": 2.0, "_id": "test-unwind"})
+    await col.insert_one({
+        "tags": ["fresh", "organic"],
+        "product": "Apple",
+        "quantity": 1,
+        "price": 2.0,
+        "_id": "test-unwind",
+    })
 
     pipeline = AggregationPipeline(col)
     results = await pipeline.match({"_id": "test-unwind"}).unwind("$tags").execute()
@@ -98,7 +105,9 @@ async def test_pipeline_unwind(sale_repo):
 @pytest.mark.asyncio
 async def test_pipeline_add_fields(sale_repo):
     pipeline = AggregationPipeline(sale_repo.collection)
-    results = await pipeline.add_fields({"revenue": {"$multiply": ["$price", "$quantity"]}}).execute()
+    results = await pipeline.add_fields(
+        {"revenue": {"$multiply": ["$price", "$quantity"]}}
+    ).execute()
     assert all("revenue" in r for r in results)
 
 

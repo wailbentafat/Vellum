@@ -1,6 +1,5 @@
-import pytest
-import pytest_asyncio
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+import pytest_asyncio
 
 MONGO_URI = "mongodb://localhost:27017"
 TEST_DB_NAME = "vellum_test"

@@ -1,4 +1,3 @@
-import pytest
 from vellum.exceptions import DocumentNotFoundError, OptimisticLockError, VellumError
 
 

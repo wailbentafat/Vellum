@@ -1,8 +1,9 @@
 import pytest
 import pytest_asyncio
-from vellum.model import VellumBaseModel, SoftDeleteMixin
-from vellum.repository import VellumRepository
+
 from vellum.exceptions import DocumentNotFoundError
+from vellum.model import SoftDeleteMixin, VellumBaseModel
+from vellum.repository import VellumRepository
 
 
 class Post(SoftDeleteMixin, VellumBaseModel):

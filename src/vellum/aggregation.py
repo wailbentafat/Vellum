@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Any, TypeVar
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import BaseModel
@@ -13,20 +13,20 @@ class AggregationPipeline:
     def __init__(
         self,
         collection: AsyncIOMotorCollection,
-        output_model: Optional[Type[BaseModel]] = None,
+        output_model: type[BaseModel] | None = None,
     ) -> None:
         self._collection = collection
-        self._stages: List[Dict[str, Any]] = []
+        self._stages: list[dict[str, Any]] = []
         self._output_model = output_model
 
-    def match(self, query: Dict[str, Any]) -> AggregationPipeline:
+    def match(self, query: dict[str, Any]) -> AggregationPipeline:
         self._stages.append({"$match": query})
         return self
 
     def project(
         self,
-        projection: Dict[str, Any],
-        output_model: Optional[Type[BaseModel]] = None,
+        projection: dict[str, Any],
+        output_model: type[BaseModel] | None = None,
     ) -> AggregationPipeline:
         self._stages.append({"$project": projection})
         if output_model is not None:
@@ -36,16 +36,16 @@ class AggregationPipeline:
     def group(
         self,
         group_id: Any,
-        output_model: Optional[Type[BaseModel]] = None,
+        output_model: type[BaseModel] | None = None,
         **accumulators: Any,
     ) -> AggregationPipeline:
-        stage: Dict[str, Any] = {"_id": group_id, **accumulators}
+        stage: dict[str, Any] = {"_id": group_id, **accumulators}
         self._stages.append({"$group": stage})
         if output_model is not None:
             self._output_model = output_model
         return self
 
-    def sort(self, sort_spec: List[Tuple[str, int]]) -> AggregationPipeline:
+    def sort(self, sort_spec: list[tuple[str, int]]) -> AggregationPipeline:
         self._stages.append({"$sort": dict(sort_spec)})
         return self
 
@@ -64,11 +64,11 @@ class AggregationPipeline:
         self._stages.append({"$unwind": stage})
         return self
 
-    def add_fields(self, fields: Dict[str, Any]) -> AggregationPipeline:
+    def add_fields(self, fields: dict[str, Any]) -> AggregationPipeline:
         self._stages.append({"$addFields": fields})
         return self
 
-    def set(self, fields: Dict[str, Any]) -> AggregationPipeline:
+    def set(self, fields: dict[str, Any]) -> AggregationPipeline:
         self._stages.append({"$set": fields})
         return self
 
@@ -97,9 +97,9 @@ class AggregationPipeline:
         self._stages.append({"$count": output_field})
         return self
 
-    async def execute(self) -> List[Any]:
+    async def execute(self) -> list[Any]:
         cursor = self._collection.aggregate(self._stages)
-        raw: List[Dict[str, Any]] = await cursor.to_list(length=None)
+        raw: list[dict[str, Any]] = await cursor.to_list(length=None)
         if self._output_model is not None:
             return [self._output_model.model_validate(doc) for doc in raw]
         return raw

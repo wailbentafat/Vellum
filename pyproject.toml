@@ -23,6 +23,16 @@ pytest-asyncio = "^0.23.0"
 ruff = "^0.12.0"
 mkdocs-material = "^9.6.14"
 
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 

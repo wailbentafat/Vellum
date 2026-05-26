@@ -1,5 +1,5 @@
 import datetime
-from typing import Any, ClassVar, Dict, Optional, Type, TypeVar
+from typing import Any, ClassVar, TypeVar
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,7 +12,7 @@ class OptimisticConcurrencyMixin(BaseModel):
 
 
 class SoftDeleteMixin(BaseModel):
-    deleted_at: Optional[datetime.datetime] = None
+    deleted_at: datetime.datetime | None = None
 
     def is_deleted(self) -> bool:
         return self.deleted_at is not None
@@ -24,10 +24,10 @@ class VellumBaseModel(HooksMixin, BaseModel):
 
     id: UUID = Field(default_factory=uuid4, alias="_id")
     created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
     updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     model_config = ConfigDict(
@@ -39,21 +39,21 @@ class VellumBaseModel(HooksMixin, BaseModel):
     )
 
     class Settings:
-        collection_name: ClassVar[Optional[str]] = None
+        collection_name: ClassVar[str | None] = None
 
     @classmethod
     def get_collection_name(cls) -> str:
         name = cls.Settings.collection_name
         return name if name else cls.__name__.lower()
 
-    def to_mongo(self) -> Dict[str, Any]:
+    def to_mongo(self) -> dict[str, Any]:
         data = self.model_dump(by_alias=True, exclude_none=False)
         if "_id" in data and isinstance(data["_id"], UUID):
             data["_id"] = str(data["_id"])
         return data
 
     @classmethod
-    def from_mongo(cls: Type[T], data: Dict[str, Any]) -> T:
+    def from_mongo(cls: type[T], data: dict[str, Any]) -> T:
         if "_id" in data and isinstance(data["_id"], str):
             data["_id"] = UUID(data["_id"])
         return cls.model_validate(data)
@@ -65,6 +65,6 @@ class VellumBaseModel(HooksMixin, BaseModel):
         current = self.__dict__.get(name)
         if current is not None and current != value:
             super().__setattr__(
-                "updated_at", datetime.datetime.now(datetime.timezone.utc)
+                "updated_at", datetime.datetime.now(datetime.UTC)
             )
         super().__setattr__(name, value)

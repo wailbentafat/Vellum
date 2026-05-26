@@ -1,28 +1,31 @@
 from __future__ import annotations
 
-import datetime
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Dict, Generic, List, Optional, Tuple, Type, TypeVar, Union
+import datetime
+from typing import Any
 from uuid import UUID
 
-from motor.motor_asyncio import AsyncIOMotorClientSession, AsyncIOMotorCollection, AsyncIOMotorDatabase
+from motor.motor_asyncio import (
+    AsyncIOMotorClientSession,
+    AsyncIOMotorCollection,
+    AsyncIOMotorDatabase,
+)
 from pymongo.results import DeleteResult, InsertOneResult, UpdateResult
 
 from vellum.exceptions import DocumentNotFoundError, OptimisticLockError
 from vellum.model import OptimisticConcurrencyMixin, SoftDeleteMixin, VellumBaseModel
 
-T = TypeVar("T", bound=VellumBaseModel)
-
 SortDirection = int
 
 
-class VellumRepository(Generic[T]):
+class VellumRepository[T: VellumBaseModel]:
 
-    def __init__(self, model_cls: Type[T], database: AsyncIOMotorDatabase) -> None:
+    def __init__(self, model_cls: type[T], database: AsyncIOMotorDatabase) -> None:
         self.model_cls = model_cls
         self.collection: AsyncIOMotorCollection = database[model_cls.get_collection_name()]
 
-    async def create(self, item: T, session: Optional[AsyncIOMotorClientSession] = None) -> T:
+    async def create(self, item: T, session: AsyncIOMotorClientSession | None = None) -> T:
         if not isinstance(item, self.model_cls):
             raise TypeError(f"Expected {self.model_cls.__name__}, got {type(item).__name__}")
         await item.before_insert()
@@ -33,13 +36,15 @@ class VellumRepository(Generic[T]):
         await item.after_insert()
         return item
 
-    async def update(self, doc_id: Union[UUID, str], item: T, session: Optional[AsyncIOMotorClientSession] = None) -> T:
+    async def update(
+        self, doc_id: UUID | str, item: T, session: AsyncIOMotorClientSession | None = None
+    ) -> T:
         if not isinstance(item, self.model_cls):
             raise TypeError(f"Expected {self.model_cls.__name__}, got {type(item).__name__}")
         await item.before_update()
         query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
         doc = item.to_mongo()
-        doc["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
+        doc["updated_at"] = datetime.datetime.now(datetime.UTC)
 
         if isinstance(item, OptimisticConcurrencyMixin):
             current_version = item.version
@@ -64,7 +69,9 @@ class VellumRepository(Generic[T]):
         await item.after_update()
         return item
 
-    async def delete(self, doc_id: Union[UUID, str], session: Optional[AsyncIOMotorClientSession] = None) -> bool:
+    async def delete(
+        self, doc_id: UUID | str, session: AsyncIOMotorClientSession | None = None
+    ) -> bool:
         query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
         raw = await self.collection.find_one({"_id": query_id}, session=session)
         if raw is None:
@@ -85,12 +92,12 @@ class VellumRepository(Generic[T]):
 
     async def find(
         self,
-        query: Dict[str, Any] = {},
+        query: dict[str, Any] = {},
         skip: int = 0,
         limit: int = 0,
-        sort: Optional[List[Tuple[str, SortDirection]]] = None,
+        sort: list[tuple[str, SortDirection]] | None = None,
         include_deleted: bool = False,
-    ) -> List[T]:
+    ) -> list[T]:
         skip = max(skip, 0)
         limit = max(limit, 0)
         effective_query = dict(query)
@@ -99,12 +106,12 @@ class VellumRepository(Generic[T]):
         cursor = self.collection.find(effective_query).skip(skip).limit(limit)
         if sort:
             cursor = cursor.sort(sort)
-        raw_docs: List[Dict[str, Any]] = await cursor.to_list(length=None)
+        raw_docs: list[dict[str, Any]] = await cursor.to_list(length=None)
         return [self.model_cls.from_mongo(doc) for doc in raw_docs]
 
-    async def get(self, doc_id: Union[UUID, str], include_deleted: bool = False) -> T:
+    async def get(self, doc_id: UUID | str, include_deleted: bool = False) -> T:
         query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
-        mongo_filter: Dict[str, Any] = {"_id": query_id}
+        mongo_filter: dict[str, Any] = {"_id": query_id}
         if issubclass(self.model_cls, SoftDeleteMixin) and not include_deleted:
             mongo_filter["deleted_at"] = None
         raw = await self.collection.find_one(mongo_filter)
@@ -112,20 +119,20 @@ class VellumRepository(Generic[T]):
             raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
         return self.model_cls.from_mongo(raw)
 
-    async def count(self, query: Dict[str, Any] = {}, include_deleted: bool = False) -> int:
+    async def count(self, query: dict[str, Any] = {}, include_deleted: bool = False) -> int:
         effective_query = dict(query)
         if issubclass(self.model_cls, SoftDeleteMixin) and not include_deleted:
             effective_query["deleted_at"] = None
         return await self.collection.count_documents(effective_query)
 
-    async def soft_delete(self, doc_id: Union[UUID, str]) -> bool:
+    async def soft_delete(self, doc_id: UUID | str) -> bool:
         if not issubclass(self.model_cls, SoftDeleteMixin):
             raise TypeError(
                 f"{self.model_cls.__name__} does not use SoftDeleteMixin. "
                 "Use delete() for hard deletes."
             )
         query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.UTC)
         result = await self.collection.update_one(
             {"_id": query_id}, {"$set": {"deleted_at": now}}
         )
@@ -133,7 +140,7 @@ class VellumRepository(Generic[T]):
             raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
         return True
 
-    async def restore(self, doc_id: Union[UUID, str]) -> bool:
+    async def restore(self, doc_id: UUID | str) -> bool:
         if not issubclass(self.model_cls, SoftDeleteMixin):
             raise TypeError(f"{self.model_cls.__name__} does not use SoftDeleteMixin.")
         query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
