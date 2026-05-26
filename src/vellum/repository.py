@@ -24,10 +24,12 @@ class VellumRepository(Generic[T]):
     async def create(self, item: T) -> T:
         if not isinstance(item, self.model_cls):
             raise TypeError(f"Expected {self.model_cls.__name__}, got {type(item).__name__}")
+        await item.before_insert()
         doc = item.to_mongo()
         result: InsertOneResult = await self.collection.insert_one(doc)
         if not result.inserted_id:
             raise RuntimeError("Insert did not return an inserted_id")
+        await item.after_insert()
         return item
 
     async def get(self, doc_id: Union[UUID, str]) -> T:
@@ -40,6 +42,7 @@ class VellumRepository(Generic[T]):
     async def update(self, doc_id: Union[UUID, str], item: T) -> T:
         if not isinstance(item, self.model_cls):
             raise TypeError(f"Expected {self.model_cls.__name__}, got {type(item).__name__}")
+        await item.before_update()
         query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
         doc = item.to_mongo()
         doc["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
@@ -48,13 +51,20 @@ class VellumRepository(Generic[T]):
         )
         if result.matched_count == 0:
             raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
+        await item.after_update()
         return item
 
     async def delete(self, doc_id: Union[UUID, str]) -> bool:
         query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
+        raw = await self.collection.find_one({"_id": query_id})
+        if raw is None:
+            raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
+        item = self.model_cls.from_mongo(raw)
+        await item.before_delete()
         result: DeleteResult = await self.collection.delete_one({"_id": query_id})
         if result.deleted_count == 0:
             raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
+        await item.after_delete()
         return True
 
     async def find(
