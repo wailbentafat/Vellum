@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import datetime
-from typing import Any, Dict, Generic, List, Optional, Tuple, Type, TypeVar, Union
+from contextlib import asynccontextmanager
+from typing import Any, AsyncGenerator, Dict, Generic, List, Optional, Tuple, Type, TypeVar, Union
 from uuid import UUID
 
-from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorClientSession, AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pymongo.results import DeleteResult, InsertOneResult, UpdateResult
 
 from vellum.exceptions import DocumentNotFoundError, OptimisticLockError
@@ -21,18 +22,18 @@ class VellumRepository(Generic[T]):
         self.model_cls = model_cls
         self.collection: AsyncIOMotorCollection = database[model_cls.get_collection_name()]
 
-    async def create(self, item: T) -> T:
+    async def create(self, item: T, session: Optional[AsyncIOMotorClientSession] = None) -> T:
         if not isinstance(item, self.model_cls):
             raise TypeError(f"Expected {self.model_cls.__name__}, got {type(item).__name__}")
         await item.before_insert()
         doc = item.to_mongo()
-        result: InsertOneResult = await self.collection.insert_one(doc)
+        result: InsertOneResult = await self.collection.insert_one(doc, session=session)
         if not result.inserted_id:
             raise RuntimeError("Insert did not return an inserted_id")
         await item.after_insert()
         return item
 
-    async def update(self, doc_id: Union[UUID, str], item: T) -> T:
+    async def update(self, doc_id: Union[UUID, str], item: T, session: Optional[AsyncIOMotorClientSession] = None) -> T:
         if not isinstance(item, self.model_cls):
             raise TypeError(f"Expected {self.model_cls.__name__}, got {type(item).__name__}")
         await item.before_update()
@@ -48,7 +49,7 @@ class VellumRepository(Generic[T]):
             mongo_filter = {"_id": query_id}
 
         result: UpdateResult = await self.collection.update_one(
-            mongo_filter, {"$set": doc}
+            mongo_filter, {"$set": doc}, session=session
         )
         if result.matched_count == 0:
             if isinstance(item, OptimisticConcurrencyMixin):
@@ -63,18 +64,24 @@ class VellumRepository(Generic[T]):
         await item.after_update()
         return item
 
-    async def delete(self, doc_id: Union[UUID, str]) -> bool:
+    async def delete(self, doc_id: Union[UUID, str], session: Optional[AsyncIOMotorClientSession] = None) -> bool:
         query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
-        raw = await self.collection.find_one({"_id": query_id})
+        raw = await self.collection.find_one({"_id": query_id}, session=session)
         if raw is None:
             raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
         item = self.model_cls.from_mongo(raw)
         await item.before_delete()
-        result: DeleteResult = await self.collection.delete_one({"_id": query_id})
+        result: DeleteResult = await self.collection.delete_one({"_id": query_id}, session=session)
         if result.deleted_count == 0:
             raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
         await item.after_delete()
         return True
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncGenerator[AsyncIOMotorClientSession, None]:
+        async with await self.collection.database.client.start_session() as session:
+            async with session.start_transaction():
+                yield session
 
     async def find(
         self,
