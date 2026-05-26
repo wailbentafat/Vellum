@@ -16,8 +16,12 @@ from pymongo.results import DeleteResult, InsertOneResult, UpdateResult
 
 from vellum.exceptions import DocumentNotFoundError, OptimisticLockError
 from vellum.model import OptimisticConcurrencyMixin, SoftDeleteMixin, VellumBaseModel
+from vellum.query import QueryExpression
+from vellum.update import UpdateBuilder
 
 SortDirection = int
+
+QueryInput = QueryExpression | dict[str, Any]
 
 
 class VellumRepository[T: VellumBaseModel]:
@@ -25,6 +29,10 @@ class VellumRepository[T: VellumBaseModel]:
     def __init__(self, model_cls: type[T], database: AsyncIOMotorDatabase) -> None:
         self.model_cls = model_cls
         self.collection: AsyncIOMotorCollection = database[model_cls.get_collection_name()]
+
+    @staticmethod
+    def _resolve_query(query: QueryInput) -> dict[str, Any]:
+        return query.to_mongo_query() if isinstance(query, QueryExpression) else dict(query)
 
     async def create(self, item: T, session: AsyncIOMotorClientSession | None = None) -> T:
         if not isinstance(item, self.model_cls):
@@ -36,6 +44,11 @@ class VellumRepository[T: VellumBaseModel]:
             raise RuntimeError("Insert did not return an inserted_id")
         await item.after_insert()
         return item
+
+    def update_builder(
+        self, doc_id: UUID | str, session: AsyncIOMotorClientSession | None = None
+    ) -> UpdateBuilder[T]:
+        return UpdateBuilder[T](self.collection, doc_id, session)
 
     async def update(
         self, doc_id: UUID | str, item: T, session: AsyncIOMotorClientSession | None = None
@@ -93,7 +106,7 @@ class VellumRepository[T: VellumBaseModel]:
 
     async def find(
         self,
-        query: dict[str, Any] = {},
+        query: QueryInput = {},
         skip: int = 0,
         limit: int = 0,
         sort: list[tuple[str, SortDirection]] | None = None,
@@ -101,7 +114,7 @@ class VellumRepository[T: VellumBaseModel]:
     ) -> list[T]:
         skip = max(skip, 0)
         limit = max(limit, 0)
-        effective_query = dict(query)
+        effective_query = self._resolve_query(query)
         if issubclass(self.model_cls, SoftDeleteMixin) and not include_deleted:
             effective_query["deleted_at"] = None
         cursor = self.collection.find(effective_query).skip(skip).limit(limit)
@@ -109,6 +122,22 @@ class VellumRepository[T: VellumBaseModel]:
             cursor = cursor.sort(sort)
         raw_docs: list[dict[str, Any]] = await cursor.to_list(length=None)
         return [self.model_cls.from_mongo(doc) for doc in raw_docs]
+
+    async def find_cursor(
+        self,
+        query: QueryInput = {},
+        sort: list[tuple[str, SortDirection]] | None = None,
+        batch_size: int = 100,
+        include_deleted: bool = False,
+    ) -> AsyncGenerator[T, None]:
+        effective_query = self._resolve_query(query)
+        if issubclass(self.model_cls, SoftDeleteMixin) and not include_deleted:
+            effective_query["deleted_at"] = None
+        cursor = self.collection.find(effective_query, batch_size=batch_size)
+        if sort:
+            cursor = cursor.sort(sort)
+        async for doc in cursor:
+            yield self.model_cls.from_mongo(doc)
 
     async def get(self, doc_id: UUID | str, include_deleted: bool = False) -> T:
         query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
@@ -122,11 +151,11 @@ class VellumRepository[T: VellumBaseModel]:
 
     async def find_one(
         self,
-        query: dict[str, Any] = {},
+        query: QueryInput = {},
         sort: list[tuple[str, SortDirection]] | None = None,
         include_deleted: bool = False,
     ) -> T | None:
-        effective_query = dict(query)
+        effective_query = self._resolve_query(query)
         if issubclass(self.model_cls, SoftDeleteMixin) and not include_deleted:
             effective_query["deleted_at"] = None
         cursor = self.collection.find(effective_query).limit(1)
@@ -139,20 +168,21 @@ class VellumRepository[T: VellumBaseModel]:
 
     async def find_or_create(
         self,
-        query: dict[str, Any],
+        query: QueryInput,
         defaults: dict[str, Any] = {},
         include_deleted: bool = False,
     ) -> T:
         existing = await self.find_one(query, include_deleted=include_deleted)
         if existing is not None:
             return existing
-        merged = {**query, **defaults}
+        resolved = self._resolve_query(query)
+        merged = {**resolved, **defaults}
         item = self.model_cls(**merged)
         return await self.create(item)
 
     async def upsert(
         self,
-        query: dict[str, Any],
+        query: QueryInput,
         item: T,
         session: AsyncIOMotorClientSession | None = None,
     ) -> T:
@@ -164,7 +194,7 @@ class VellumRepository[T: VellumBaseModel]:
         doc.pop("created_at", None)
         now = datetime.datetime.now(datetime.UTC)
         result: UpdateResult = await self.collection.update_one(
-            query,
+            self._resolve_query(query),
             {"$set": doc, "$setOnInsert": {"_id": str(item.id), "created_at": now}},
             upsert=True,
             session=session,
@@ -173,8 +203,8 @@ class VellumRepository[T: VellumBaseModel]:
             item.id = UUID(str(result.upserted_id))
         return item
 
-    async def count(self, query: dict[str, Any] = {}, include_deleted: bool = False) -> int:
-        effective_query = dict(query)
+    async def count(self, query: QueryInput = {}, include_deleted: bool = False) -> int:
+        effective_query = self._resolve_query(query)
         if issubclass(self.model_cls, SoftDeleteMixin) and not include_deleted:
             effective_query["deleted_at"] = None
         return await self.collection.count_documents(effective_query)

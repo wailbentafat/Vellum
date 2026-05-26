@@ -161,6 +161,24 @@ async def test_upsert_replaces_existing(repo):
 
 
 @pytest.mark.asyncio
+async def test_find_or_create_with_field_ref(repo):
+    result = await repo.find_or_create(
+        Product.fields.name == "Novel", defaults={"price": 7.0}
+    )
+    assert result.price == 7.0
+
+
+@pytest.mark.asyncio
+async def test_upsert_with_field_ref(repo):
+    original = Product(name="RefUpsert", price=1.0)
+    await repo.create(original)
+    replacement = Product(name="RefUpsert", price=88.0)
+    await repo.upsert(Product.fields.name == "RefUpsert", replacement)
+    updated = await repo.get(original.id)
+    assert updated.price == 88.0
+
+
+@pytest.mark.asyncio
 async def test_bulk_create_inserts_all(repo):
     products = [Product(name=f"Bulk{i}", price=float(i)) for i in range(3)]
     created = await repo.bulk_create(products)
@@ -191,3 +209,80 @@ async def test_bulk_delete_removes_matching(repo):
     assert deleted_count == 2
     remaining = await repo.find()
     assert len(remaining) == 1
+
+
+@pytest.mark.asyncio
+async def test_find_with_field_ref(repo):
+    await repo.create(Product(name="Alpha", price=1.0))
+    await repo.create(Product(name="Beta", price=2.0))
+    results = await repo.find(Product.fields.price > 1.0)
+    assert len(results) == 1
+    assert results[0].name == "Beta"
+
+
+@pytest.mark.asyncio
+async def test_find_one_with_field_ref(repo):
+    await repo.create(Product(name="Gamma", price=3.0))
+    await repo.create(Product(name="Delta", price=4.0))
+    result = await repo.find_one(Product.fields.name == "Delta")
+    assert result is not None
+    assert result.price == 4.0
+
+
+@pytest.mark.asyncio
+async def test_count_with_field_ref(repo):
+    await repo.create(Product(name="Echo", price=5.0))
+    await repo.create(Product(name="Foxtrot", price=6.0))
+    total = await repo.count(Product.fields.price > 5.0)
+    assert total == 1
+
+
+@pytest.mark.asyncio
+async def test_update_builder_set(repo):
+    product = await repo.create(Product(name="Builder", price=10.0))
+    result = await repo.update_builder(product.id).set(Product.fields.price, 99.0).execute()
+    assert result is not None
+    assert result["price"] == 99.0
+
+
+@pytest.mark.asyncio
+async def test_update_builder_inc(repo):
+    product = await repo.create(Product(name="IncTest", price=10.0))
+    result = await repo.update_builder(product.id).inc(Product.fields.price, 5).execute()
+    assert result is not None
+    assert result["price"] == 15.0
+
+
+@pytest.mark.asyncio
+async def test_update_builder_unset(repo):
+    product = await repo.create(Product(name="UnsetMe", price=10.0))
+    result = await repo.update_builder(product.id).unset(Product.fields.price).execute()
+    assert result is not None
+    assert "price" not in result
+
+
+@pytest.mark.asyncio
+async def test_update_builder_string_field(repo):
+    product = await repo.create(Product(name="StringRef", price=5.0))
+    result = await repo.update_builder(product.id).set("price", 42.0).execute()
+    assert result is not None
+    assert result["price"] == 42.0
+
+
+@pytest.mark.asyncio
+async def test_find_cursor_returns_all(repo):
+    for i in range(5):
+        await repo.create(Product(name=f"Cursor{i}", price=float(i)))
+    names = [p async for p in repo.find_cursor(sort=[("name", 1)])]
+    assert len(names) == 5
+    assert names[0].name == "Cursor0"
+    assert names[4].name == "Cursor4"
+
+
+@pytest.mark.asyncio
+async def test_find_cursor_with_filter(repo):
+    await repo.create(Product(name="Keep", price=1.0))
+    await repo.create(Product(name="Skip", price=10.0))
+    results = [p async for p in repo.find_cursor(Product.fields.price < 5.0)]
+    assert len(results) == 1
+    assert results[0].name == "Keep"

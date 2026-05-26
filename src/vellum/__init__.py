@@ -1,5 +1,7 @@
 from vellum.aggregation import AggregationPipeline
 from vellum.connection import connect_to_mongodb, get_database
+from vellum.doctor import SchemaDoctor
+from vellum.encryption import EncryptedField, encrypted_field
 from vellum.exceptions import (
     DocumentNotFoundError,
     HookError,
@@ -52,6 +54,8 @@ from vellum.query import (
     text_search,
 )
 from vellum.repository import VellumRepository
+from vellum.update import UpdateBuilder
+from vellum.validation import ValidationMixin
 
 __all__ = [
     "VellumBaseModel",
@@ -77,4 +81,9 @@ __all__ = [
     "HookError",
     "connect_to_mongodb",
     "get_database",
+    "UpdateBuilder",
+    "SchemaDoctor",
+    "ValidationMixin",
+    "EncryptedField",
+    "encrypted_field",
 ]
