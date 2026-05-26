@@ -23,7 +23,7 @@ T = TypeVar("T", bound="VellumBaseModel")
 
 
 class VellumMetaclass(ModelMetaclass):
-    def __getattr__(cls, name: str) -> Any:
+    def __getattr__(cls, name: str) -> Any:  # noqa: N805
         if name.startswith("_"):
             raise AttributeError(name)
         fields = cls.__dict__.get("__pydantic_fields__", {})
