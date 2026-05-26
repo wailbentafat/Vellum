@@ -1,5 +1,6 @@
 site_name: Vellum
 site_description: The Precision ODM for Asynchronous MongoDB & Pydantic
+site_url: https://wailbentafat.github.io/Vellum
 repo_url: https://github.com/wailbentafat/Vellum
 theme:
   name: material
