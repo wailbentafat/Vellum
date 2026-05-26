@@ -143,14 +143,14 @@ The full query flow looks like this:
 
 ```mermaid
 flowchart LR
-    A["Product.price < 10"] --> B[Metaclass.__getattr__]
-    B --> C[FieldRef'price']
-    C --> D[FieldRef.__lt__10]
-    D --> E[Lt'price', 10]
-    E --> F{Repository.find}
-    F --> G[.to_mongo_query]
-    G --> H["{price: {$lt: 10}}"]
-    H --> I[MongoDB]
+    A["Product.price < 10"] --> B["Metaclass.__getattr__"]
+    B --> C["FieldRef('price')"]
+    C --> D["FieldRef.__lt__(10)"]
+    D --> E["Lt('price', 10)"]
+    E --> F{"Repository.find"}
+    F --> G[".to_mongo_query()"]
+    G --> H["{ price: { $lt: 10 } }"]
+    H --> I["MongoDB"]
 ```
 
 ### Step 5: Backward Compat with `FieldsProxy`

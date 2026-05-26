@@ -327,10 +327,10 @@ flowchart TD
 
     C --> K[AggregationStage]
     K --> L[resolve_agg_refs]
-    L --> M[FieldRef → $field_name]
+    L --> M["FieldRef → $field_name"]
 
     D --> N[_build_update]
-    N --> O[$push/$inc/$set/$pull]
+    N --> O["$push / $inc / $set / $pull"]
 
     B --> P[Index]
     P --> Q[Settings.indexes]

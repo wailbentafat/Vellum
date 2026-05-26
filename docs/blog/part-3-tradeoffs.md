@@ -303,7 +303,7 @@ gantt
     Index design + validation         :c1, 3d
     Build system switch               :c2, 1d
     Docs + examples                   :c3, 3d
-    Bug fixes (push, restore, sort)   :c4, 1d
+    "Bug fixes (push, restore, sort)"   :c4, 1d
 ```
 
 The core engine (FieldRef, metaclass, expressions) took ~40% of total development time. Integration with pydantic and Motor took another ~35%. Polish and docs took the remaining ~25%.

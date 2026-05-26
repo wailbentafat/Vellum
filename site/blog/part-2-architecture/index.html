@@ -1,0 +1,1406 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="The Precision ODM for Asynchronous MongoDB & Pydantic">
+      
+      
+      
+        <link rel="canonical" href="https://wailbentafat.github.io/Vellum/blog/part-2-architecture/">
+      
+      
+        <link rel="prev" href="../part-1-typing-mongodb/">
+      
+      
+        <link rel="next" href="../part-3-tradeoffs/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Part 2: Architecture Decisions That Almost Broke Us - Vellum</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#part-2-architecture-decisions-that-almost-broke-us" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Vellum" class="md-header__button md-logo" aria-label="Vellum" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Vellum
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Part 2: Architecture Decisions That Almost Broke Us
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/wailbentafat/Vellum" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Vellum" class="md-nav__button md-logo" aria-label="Vellum" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Vellum
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/wailbentafat/Vellum" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../queries/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../repository/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repository
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../aggregation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Aggregation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../updates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../advanced/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Blog
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Blog
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../part-1-typing-mongodb/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Part 1: Typing MongoDB at the Speed of Thought
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Part 2: Architecture Decisions That Almost Broke Us
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Part 2: Architecture Decisions That Almost Broke Us
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-metaclass-conflict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The Metaclass Conflict
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. The Metaclass Conflict">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-why-__getattr__-not-__init_subclass__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Why __getattr__ — Not __init_subclass__
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Why __getattr__ — Not __init_subclass__">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-index-design-puzzle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The Index Design Puzzle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. The Index Design Puzzle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-build-system-trap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The Build System Trap
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. The Build System Trap">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-the-push-bug" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The $push Bug
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. The $push Bug">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Fix
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary-architecture-at-a-glance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary: Architecture at a Glance
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../part-3-tradeoffs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Part 3: What We Won, What We Lost
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-metaclass-conflict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The Metaclass Conflict
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. The Metaclass Conflict">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-why-__getattr__-not-__init_subclass__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Why __getattr__ — Not __init_subclass__
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Why __getattr__ — Not __init_subclass__">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-index-design-puzzle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The Index Design Puzzle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. The Index Design Puzzle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-build-system-trap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The Build System Trap
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. The Build System Trap">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-the-push-bug" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The $push Bug
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. The $push Bug">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Fix
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary-architecture-at-a-glance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary: Architecture at a Glance
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="part-2-architecture-decisions-that-almost-broke-us">Part 2: Architecture Decisions That Almost Broke Us</h1>
+<blockquote>
+<p>The hard problems behind building a type-safe MongoDB ODM on top of pydantic v2.</p>
+</blockquote>
+<hr />
+<p>Building Vellum looked straightforward on paper: wrap Motor, add type hints, call it a day. In practice, every layer of the stack pushed back. The metaclass conflicted with pydantic. The Index design fought with Python's class-body scoping rules. The build system silently refused to find our package.</p>
+<p>Here's how we solved each one — and what we'd do differently next time.</p>
+<hr />
+<h2 id="1-the-metaclass-conflict">1. The Metaclass Conflict</h2>
+<h3 id="the-problem">The Problem</h3>
+<p>We wanted three things that don't naturally coexist:</p>
+<ul>
+<li><strong>pydantic's <code>BaseModel</code></strong> — field validation, serialisation, schema generation</li>
+<li><strong>A <code>HooksMixin</code></strong> — lifecycle hooks like <code>before_insert</code>, <code>after_insert</code></li>
+<li><strong>A custom metaclass</strong> — intercept <code>cls.fieldname</code> to return <code>FieldRef</code></li>
+</ul>
+<p>The MRO looked innocent enough:</p>
+<pre><code class="language-python">class VellumBaseModel(HooksMixin, BaseModel, metaclass=VellumMetaclass):
+    ...
+</code></pre>
+<p>But <code>HooksMixin</code> inherited from <code>type</code> (making it a metaclass), and <code>BaseModel</code> uses <code>ModelMetaclass</code>. You can't have a class with two metaclass parents unless one derives from the other.</p>
+<pre><code class="language-mermaid">classDiagram
+    class type {
+        +__new__()
+        +__init__()
+    }
+    class ModelMetaclass {
+        +__setattr__()
+        +__getattr_hook__()
+    }
+    class HooksMixin {
+        +before_insert()
+        +after_insert()
+    }
+    class VellumMetaclass {
+        +__getattr__()
+        +__init__()
+    }
+    class VellumBaseModel {
+        +id: UUID
+        +created_at: datetime
+        +updated_at: datetime
+        +Settings
+        +__init_indexes__()
+        +to_mongo()
+        +from_mongo()
+    }
+    type &lt;|-- ModelMetaclass
+    type &lt;|-- HooksMixin
+    ModelMetaclass &lt;|-- VellumMetaclass
+    HooksMixin &lt;|-- VellumBaseModel
+    BaseModel &lt;|-- VellumBaseModel
+    VellumBaseModel .. VellumMetaclass : metaclass
+</code></pre>
+<h3 id="the-solution">The Solution</h3>
+<p>The fix was understanding that <code>HooksMixin</code> doesn't need to be a metaclass — it can be a regular class mixed into <code>VellumBaseModel</code>. The metaclass conflict disappears because <code>VellumMetaclass(ModelMetaclass)</code> is the only metaclass, and <code>HooksMixin</code> (now a plain class) inherits through normal MRO.</p>
+<p>The key insight: <strong>only one metaclass is used for any class</strong>. Python picks the most-derived metaclass from the class hierarchy. As long as all metaclass parents form a single chain, you're fine.</p>
+<pre><code class="language-python"># HooksMixin — plain class, not a metaclass
+class HooksMixin(BaseModel):
+    async def before_insert(self): ...
+    async def after_insert(self): ...
+
+# One metaclass, one chain
+class VellumMetaclass(ModelMetaclass):  # ModelMetaclass → type
+    ...
+
+# No conflict
+class VellumBaseModel(HooksMixin, BaseModel, metaclass=VellumMetaclass):
+    ...
+</code></pre>
+<hr />
+<h2 id="2-why-__getattr__-not-__init_subclass__">2. Why <code>__getattr__</code> — Not <code>__init_subclass__</code></h2>
+<h3 id="the-problem_1">The Problem</h3>
+<p>Our first instinct was to use <code>__init_subclass__</code> to cache field references:</p>
+<pre><code class="language-python">class VellumBaseModel(BaseModel):
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        for field_name in cls.__annotations__:
+            setattr(cls, field_name, FieldRef(field_name))
+</code></pre>
+<p>This fails catastrophically. Pydantic v2's <code>ModelMetaclass.__setattr__</code> blocks overwriting field descriptors — and even if it didn't, pydantic hasn't finished building <code>__pydantic_fields__</code> when <code>__init_subclass__</code> fires.</p>
+<h3 id="the-solution_1">The Solution</h3>
+<p><code>__getattr__</code> on the metaclass is the natural fallback. Python's attribute lookup chain is:</p>
+<pre><code>instance.__dict__ → type.__dict__ → metaclass.__getattr__
+</code></pre>
+<p>Since pydantic v2 strips field names from <code>type.__dict__</code>, the lookup naturally falls through to <code>metaclass.__getattr__</code>. We just need to check <code>__pydantic_fields__</code> — which IS populated by the time the metaclass's <code>__init__</code> runs.</p>
+<pre><code class="language-python">class VellumMetaclass(ModelMetaclass):
+    def __getattr__(cls, name: str):
+        if name.startswith(&quot;_&quot;):
+            raise AttributeError(name)
+        fields = cls.__dict__.get(&quot;__pydantic_fields__&quot;, {})
+        if name in fields:
+            return FieldRef(name)
+        raise AttributeError(f&quot;{cls.__name__} has no attribute {name!r}&quot;)
+</code></pre>
+<p>The <code>_</code> guard prevents infinite recursion — pydantic internals probe <code>cls.__dict__</code> for private attributes during validation, which would re-enter <code>__getattr__</code>.</p>
+<hr />
+<h2 id="3-the-index-design-puzzle">3. The Index Design Puzzle</h2>
+<h3 id="the-problem_2">The Problem</h3>
+<p>MongoDB indexes need field names and direction (<code>pymongo.ASCENDING</code>, <code>DESCENDING</code>). We wanted to write:</p>
+<pre><code class="language-python">class Product(VellumBaseModel):
+    name: str
+    price: float
+    category: str
+
+    class Settings:
+        indexes = [
+            Index(Product.name),                    # ascending
+            Index(Product.price, Product.name),      # compound
+            Index(Product.price.desc()),             # descending
+            [(&quot;category&quot;, 1)],                        # raw dict still works
+        ]
+</code></pre>
+<p>But you CAN'T reference <code>Product.name</code> inside the class body — <code>Product</code> doesn't exist yet.</p>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph &quot;Class Body (Product doesn't exist yet)&quot;
+        A[&quot;Index(Product.name)&quot;] --&gt; B[&quot;NameError: Product not defined&quot;]
+    end
+    subgraph &quot;After class creation&quot;
+        C[&quot;Product.price &lt; 10&quot;] --&gt; D[&quot;Works fine via metaclass&quot;]
+    end
+</code></pre>
+<h3 id="the-solution_2">The Solution</h3>
+<p>Two APIs that cover both use cases:</p>
+<p><strong>1. <code>Settings.indexes</code></strong> — for simple, static indexes:</p>
+<pre><code class="language-python">class Product(VellumBaseModel):
+    name: str
+    price: float
+    category: str
+
+    class Settings:
+        indexes = [
+            Index(&quot;name&quot;),                    # string ref — works in class body
+            Index((&quot;price&quot;, 1), (&quot;name&quot;, 1)),  # tuples — no FieldRef needed
+            [(&quot;category&quot;, 1)],
+        ]
+</code></pre>
+<p><strong>2. <code>__init_indexes__</code></strong> — classmethod that runs AFTER the class exists, so <code>cls.name</code> works:</p>
+<pre><code class="language-python">class Product(VellumBaseModel):
+    name: str
+    price: float
+    category: str
+
+    @classmethod
+    def __init_indexes__(cls):
+        return [
+            Index(cls.name),                   # cls.name → FieldRef — works here
+            Index(cls.price, cls.name),
+            Index(cls.price.desc()),
+        ]
+</code></pre>
+<p>This works because <code>VellumMetaclass.__init__</code> calls <code>__init_indexes__</code> after pydantic has fully set up the class:</p>
+<pre><code class="language-python">class VellumMetaclass(ModelMetaclass):
+    def __init__(cls, name, bases, namespace, **kwargs):
+        super().__init__(name, bases, namespace, **kwargs)
+        init_indexes = cls.__init_indexes__()
+        if init_indexes:
+            current = getattr(cls.Settings, &quot;indexes&quot;, [])
+            cls.Settings.indexes = [*current, *init_indexes]
+</code></pre>
+<p>The <code>Index</code> class itself uses lazy validation — it stores the raw fields and validates them in <code>ensure_indexes()</code> against the actual model schema:</p>
+<pre><code class="language-python">class Index:
+    def __init__(self, *fields: FieldRef | SortSpec | str, **options):
+        self._raw_fields = list(fields)
+        self._options = options
+
+    @classmethod
+    def resolve(cls, value):
+        if isinstance(value, Index):
+            return value
+        if isinstance(value, dict):
+            return cls(**value)  # may fail later
+        return value
+
+    def validate(self, model_cls):
+        for field in self._raw_fields:
+            if isinstance(field, FieldRef):
+                assert field._field in model_cls.__pydantic_fields__
+</code></pre>
+<p>This design means:
+- String refs work in class body (no forward reference)
+- Type-safe <code>cls.name</code> syntax works via <code>__init_indexes__</code>
+- Raw dict format (<code>[("category", 1)]</code>) still supported
+- Validation happens at runtime in <code>ensure_indexes()</code>, not at class creation</p>
+<hr />
+<h2 id="4-the-build-system-trap">4. The Build System Trap</h2>
+<h3 id="the-problem_3">The Problem</h3>
+<p>We used <code>poetry-core</code> as the build backend. Our package was named <code>vellum-odm</code> with a <code>src/</code> layout:</p>
+<pre><code>vellum-odm/
+├── pyproject.toml
+└── src/
+    └── vellum/
+        ├── __init__.py
+        └── ...
+</code></pre>
+<p>Poetry couldn't find the package. Poetry's build backend expects the package directory to match the package name, or to be in the project root. <code>src/</code> layout + hypenated name was a dead end.</p>
+<h3 id="the-solution_3">The Solution</h3>
+<p>We switched to <code>hatchling</code>, which handles PEP 621 natively:</p>
+<pre><code class="language-toml">[build-system]
+requires = [&quot;hatchling&quot;]
+build-backend = &quot;hatchling.build&quot;
+
+[project]
+name = &quot;vellum-odm&quot;
+version = &quot;0.1.0&quot;
+</code></pre>
+<p>Hatchling respects <code>src/</code> layout out of the box. The package name in <code>pyproject.toml</code> (<code>vellum-odm</code>) and the import name (<code>vellum</code>) can differ without issue — hatchling auto-discovers packages in <code>src/</code>.</p>
+<hr />
+<h2 id="5-the-push-bug">5. The <code>$push</code> Bug</h2>
+<h3 id="the-problem_4">The Problem</h3>
+<p>The <code>UpdateBuilder.push()</code> method collected values into a list, then assigned the dict directly to <code>$push</code>:</p>
+<pre><code class="language-python"># After: UpdateBuilder.push(Product.tags, &quot;sale&quot;)
+self._pushes = {&quot;tags&quot;: [&quot;sale&quot;]}
+# Generated: {&quot;$push&quot;: {&quot;tags&quot;: [&quot;sale&quot;]}}
+# MongoDB interprets this as pushing [&quot;sale&quot;] as a SINGLE element
+</code></pre>
+<p>The result: <code>tags</code> became <code>["mobile", "5g", ["sale"]]</code> instead of <code>["mobile", "5g", "sale"]</code>.</p>
+<h3 id="the-fix">The Fix</h3>
+<p>Check how many values are being pushed — if it's one, use the value directly; if multiple, wrap in <code>$each</code>:</p>
+<pre><code class="language-python">if self._pushes:
+    push_update = {}
+    for f, values in self._pushes.items():
+        if len(values) == 1:
+            push_update[f] = values[0]
+        else:
+            push_update[f] = {&quot;$each&quot;: values}
+    update[&quot;$push&quot;] = push_update
+</code></pre>
+<p>Now a single <code>push</code> emits <code>{"$push": {"tags": "sale"}}</code> (correct), and multiple calls emit <code>{"$push": {"tags": {"$each": ["sale", "clearance"]}}}</code>.</p>
+<hr />
+<h2 id="summary-architecture-at-a-glance">Summary: Architecture at a Glance</h2>
+<pre><code class="language-mermaid">flowchart TD
+    A[User Code] --&gt; B[VellumRepository]
+    A --&gt; C[AggregationPipeline]
+    A --&gt; D[UpdateBuilder]
+
+    B --&gt; E{Query Input}
+    E --&gt; F[QueryExpression]
+    E --&gt; G[Raw dict]
+
+    F --&gt; H[FieldRef]
+    H --&gt; I[Operator overloading]
+    I --&gt; J[Eq/Gt/Lt/And/Or/Not...]
+
+    C --&gt; K[AggregationStage]
+    K --&gt; L[resolve_agg_refs]
+    L --&gt; M[&quot;FieldRef → $field_name&quot;]
+
+    D --&gt; N[_build_update]
+    N --&gt; O[&quot;$push / $inc / $set / $pull&quot;]
+
+    B --&gt; P[Index]
+    P --&gt; Q[Settings.indexes]
+    P --&gt; R[__init_indexes__]
+
+    subgraph &quot;Metaclass Layer&quot;
+        S[VellumMetaclass] --&gt; T[&quot;__getattr__ (cls.attr → FieldRef)&quot;]
+        S --&gt; U[&quot;__init__ (process __init_indexes__)&quot;]
+    end
+</code></pre>
+<p>In Part 3, we'll look at the tradeoffs — what we won, what we lost, and when you should (and shouldn't) use this approach.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
