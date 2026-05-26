@@ -8,7 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pymongo.results import DeleteResult, InsertOneResult, UpdateResult
 
 from vellum.exceptions import DocumentNotFoundError, OptimisticLockError
-from vellum.model import OptimisticConcurrencyMixin, VellumBaseModel
+from vellum.model import OptimisticConcurrencyMixin, SoftDeleteMixin, VellumBaseModel
 
 T = TypeVar("T", bound=VellumBaseModel)
 
@@ -31,13 +31,6 @@ class VellumRepository(Generic[T]):
             raise RuntimeError("Insert did not return an inserted_id")
         await item.after_insert()
         return item
-
-    async def get(self, doc_id: Union[UUID, str]) -> T:
-        query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
-        raw: Optional[Dict[str, Any]] = await self.collection.find_one({"_id": query_id})
-        if raw is None:
-            raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
-        return self.model_cls.from_mongo(raw)
 
     async def update(self, doc_id: Union[UUID, str], item: T) -> T:
         if not isinstance(item, self.model_cls):
@@ -89,17 +82,60 @@ class VellumRepository(Generic[T]):
         skip: int = 0,
         limit: int = 0,
         sort: Optional[List[Tuple[str, SortDirection]]] = None,
+        include_deleted: bool = False,
     ) -> List[T]:
         skip = max(skip, 0)
         limit = max(limit, 0)
-        cursor = self.collection.find(query).skip(skip).limit(limit)
+        effective_query = dict(query)
+        if issubclass(self.model_cls, SoftDeleteMixin) and not include_deleted:
+            effective_query["deleted_at"] = None
+        cursor = self.collection.find(effective_query).skip(skip).limit(limit)
         if sort:
             cursor = cursor.sort(sort)
         raw_docs: List[Dict[str, Any]] = await cursor.to_list(length=None)
         return [self.model_cls.from_mongo(doc) for doc in raw_docs]
 
-    async def count(self, query: Dict[str, Any] = {}) -> int:
-        return await self.collection.count_documents(query)
+    async def get(self, doc_id: Union[UUID, str], include_deleted: bool = False) -> T:
+        query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
+        mongo_filter: Dict[str, Any] = {"_id": query_id}
+        if issubclass(self.model_cls, SoftDeleteMixin) and not include_deleted:
+            mongo_filter["deleted_at"] = None
+        raw = await self.collection.find_one(mongo_filter)
+        if raw is None:
+            raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
+        return self.model_cls.from_mongo(raw)
+
+    async def count(self, query: Dict[str, Any] = {}, include_deleted: bool = False) -> int:
+        effective_query = dict(query)
+        if issubclass(self.model_cls, SoftDeleteMixin) and not include_deleted:
+            effective_query["deleted_at"] = None
+        return await self.collection.count_documents(effective_query)
+
+    async def soft_delete(self, doc_id: Union[UUID, str]) -> bool:
+        if not issubclass(self.model_cls, SoftDeleteMixin):
+            raise TypeError(
+                f"{self.model_cls.__name__} does not use SoftDeleteMixin. "
+                "Use delete() for hard deletes."
+            )
+        query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
+        now = datetime.datetime.now(datetime.timezone.utc)
+        result = await self.collection.update_one(
+            {"_id": query_id}, {"$set": {"deleted_at": now}}
+        )
+        if result.matched_count == 0:
+            raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
+        return True
+
+    async def restore(self, doc_id: Union[UUID, str]) -> bool:
+        if not issubclass(self.model_cls, SoftDeleteMixin):
+            raise TypeError(f"{self.model_cls.__name__} does not use SoftDeleteMixin.")
+        query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
+        result = await self.collection.update_one(
+            {"_id": query_id}, {"$set": {"deleted_at": None}}
+        )
+        if result.matched_count == 0:
+            raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
+        return True
 
     async def ensure_indexes(self) -> None:
         indexes = getattr(self.model_cls.Settings, "indexes", [])

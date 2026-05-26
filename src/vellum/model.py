@@ -10,6 +10,13 @@ from vellum.hooks import HooksMixin
 class OptimisticConcurrencyMixin(BaseModel):
     version: int = 1
 
+
+class SoftDeleteMixin(BaseModel):
+    deleted_at: Optional[datetime.datetime] = None
+
+    def is_deleted(self) -> bool:
+        return self.deleted_at is not None
+
 T = TypeVar("T", bound="VellumBaseModel")
 
 
