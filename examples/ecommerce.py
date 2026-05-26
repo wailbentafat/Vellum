@@ -14,6 +14,7 @@ from vellum import (
     Index,
     OptimisticConcurrencyMixin,
     SoftDeleteMixin,
+    SortSpec,
     VellumBaseModel,
     VellumRepository,
 )
@@ -141,7 +142,8 @@ async def main():
     all_products = await product_repo.find()
     print(f"Products after soft delete: {len(all_products)} (2 visible)")
 
-    restored = await product_repo.restore(shirt.id)
+    await product_repo.restore(shirt.id)
+    restored = await product_repo.get(shirt.id)
     print(f"Restored: {restored.name}")
 
     # --- Aggregation ---
@@ -160,7 +162,7 @@ async def main():
     results = await (
         pipeline
         .group(Order.product_id, total_revenue={"$sum": Order.total})
-        .sort([("total_revenue", -1)])
+        .sort(SortSpec("total_revenue", -1))
         .execute()
     )
     print(f"Top order: product={results[0]['_id']}, revenue=${results[0]['total_revenue']:.2f}")

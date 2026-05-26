@@ -59,7 +59,13 @@ class UpdateBuilder[T]:
         if self._incs:
             update["$inc"] = self._incs
         if self._pushes:
-            update["$push"] = self._pushes
+            push_update: dict[str, Any] = {}
+            for f, values in self._pushes.items():
+                if len(values) == 1:
+                    push_update[f] = values[0]
+                else:
+                    push_update[f] = {"$each": values}
+            update["$push"] = push_update
         if self._pull:
             update["$pull"] = self._pull
         return update
