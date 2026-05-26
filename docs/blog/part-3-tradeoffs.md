@@ -244,21 +244,7 @@ If someone uses `UpdateBuilder` directly, they bypass optimistic locking. The ab
 
 ## The Tradeoff Quadrant
 
-```mermaid
-quadrantChart
-    title ODM Tradeoff Quadrant
-    x-axis Low Complexity --> High Complexity
-    y-axis Low Type Safety --> High Type Safety
-    quadrant-1 "Sweet Spot"
-    quadrant-2 "Over-engineered"
-    quadrant-3 "Minimal"
-    quadrant-4 "Risky"
-    "Raw pymongo (direct dicts)": [0.15, 0.2]
-    "Vellum ODM": [0.65, 0.85]
-    "MongoEngine (sync ODM)": [0.45, 0.5]
-    "Beanie (async ODM)": [0.55, 0.7]
-    "Raw Motor (async driver)": [0.1, 0.25]
-```
+![](images/tradeoffs.png)
 
 - **Raw pymongo/Motor**: Low complexity, low safety — you're writing JSON queries by hand
 - **MongoEngine/Beanie**: Medium complexity, medium safety — some ORM patterns but still string-heavy

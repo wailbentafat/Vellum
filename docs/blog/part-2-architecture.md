@@ -29,136 +29,14 @@ class VellumBaseModel(HooksMixin, BaseModel, metaclass=VellumMetaclass):
 
 But `HooksMixin` inherited from `type` (making it a metaclass), and `BaseModel` uses `ModelMetaclass`. You can't have a class with two metaclass parents unless one derives from the other.
 
-```mermaid
-classDiagram
-    class type {
-        +__new__()
-        +__init__()
-    }
-    class ModelMetaclass {
-        +__setattr__()
-        +__getattr_hook__()
-    }
-    class HooksMixin {
-        +before_insert()
-        +after_insert()
-    }
-    class VellumMetaclass {
-        +__getattr__()
-        +__init__()
-    }
-    class VellumBaseModel {
-        +id: UUID
-        +created_at: datetime
-        +updated_at: datetime
-        +Settings
-        +__init_indexes__()
-        +to_mongo()
-        +from_mongo()
-    }
-    type <|-- ModelMetaclass
-    type <|-- HooksMixin
-    ModelMetaclass <|-- VellumMetaclass
-    HooksMixin <|-- VellumBaseModel
-    BaseModel <|-- VellumBaseModel
-    VellumBaseModel .. VellumMetaclass : metaclass
-```
-
-### The Solution
-
-The fix was understanding that `HooksMixin` doesn't need to be a metaclass — it can be a regular class mixed into `VellumBaseModel`. The metaclass conflict disappears because `VellumMetaclass(ModelMetaclass)` is the only metaclass, and `HooksMixin` (now a plain class) inherits through normal MRO.
-
-The key insight: **only one metaclass is used for any class**. Python picks the most-derived metaclass from the class hierarchy. As long as all metaclass parents form a single chain, you're fine.
-
-```python
-# HooksMixin — plain class, not a metaclass
-class HooksMixin(BaseModel):
-    async def before_insert(self): ...
-    async def after_insert(self): ...
-
-# One metaclass, one chain
-class VellumMetaclass(ModelMetaclass):  # ModelMetaclass → type
-    ...
-
-# No conflict
-class VellumBaseModel(HooksMixin, BaseModel, metaclass=VellumMetaclass):
-    ...
-```
-
----
-
-## 2. Why `__getattr__` — Not `__init_subclass__`
-
-### The Problem
-
-Our first instinct was to use `__init_subclass__` to cache field references:
-
-```python
-class VellumBaseModel(BaseModel):
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        for field_name in cls.__annotations__:
-            setattr(cls, field_name, FieldRef(field_name))
-```
-
-This fails catastrophically. Pydantic v2's `ModelMetaclass.__setattr__` blocks overwriting field descriptors — and even if it didn't, pydantic hasn't finished building `__pydantic_fields__` when `__init_subclass__` fires.
-
-### The Solution
-
-`__getattr__` on the metaclass is the natural fallback. Python's attribute lookup chain is:
-
-```
-instance.__dict__ → type.__dict__ → metaclass.__getattr__
-```
-
-Since pydantic v2 strips field names from `type.__dict__`, the lookup naturally falls through to `metaclass.__getattr__`. We just need to check `__pydantic_fields__` — which IS populated by the time the metaclass's `__init__` runs.
-
-```python
-class VellumMetaclass(ModelMetaclass):
-    def __getattr__(cls, name: str):
-        if name.startswith("_"):
-            raise AttributeError(name)
-        fields = cls.__dict__.get("__pydantic_fields__", {})
-        if name in fields:
-            return FieldRef(name)
-        raise AttributeError(f"{cls.__name__} has no attribute {name!r}")
-```
-
-The `_` guard prevents infinite recursion — pydantic internals probe `cls.__dict__` for private attributes during validation, which would re-enter `__getattr__`.
-
----
-
-## 3. The Index Design Puzzle
-
-### The Problem
-
-MongoDB indexes need field names and direction (`pymongo.ASCENDING`, `DESCENDING`). We wanted to write:
-
-```python
-class Product(VellumBaseModel):
-    name: str
-    price: float
-    category: str
-
-    class Settings:
-        indexes = [
-            Index(Product.name),                    # ascending
-            Index(Product.price, Product.name),      # compound
-            Index(Product.price.desc()),             # descending
-            [("category", 1)],                        # raw dict still works
-        ]
-```
-
 But you CAN'T reference `Product.name` inside the class body — `Product` doesn't exist yet.
 
-```mermaid
-flowchart LR
-    subgraph "Class Body (Product doesn't exist yet)"
-        A["Index(Product.name)"] --> B["NameError: Product not defined"]
-    end
-    subgraph "After class creation"
-        C["Product.price < 10"] --> D["Works fine via metaclass"]
-    end
+```
+Class Body (Product doesn't exist yet)
+    Index(Product.name) → NameError: Product not defined
+
+After class creation
+    Product.price < 10 → Works fine via metaclass
 ```
 
 ### The Solution
@@ -311,35 +189,6 @@ Now a single `push` emits `{"$push": {"tags": "sale"}}` (correct), and multiple 
 
 ## Summary: Architecture at a Glance
 
-```mermaid
-flowchart TD
-    A[User Code] --> B[VellumRepository]
-    A --> C[AggregationPipeline]
-    A --> D[UpdateBuilder]
-
-    B --> E{Query Input}
-    E --> F[QueryExpression]
-    E --> G[Raw dict]
-
-    F --> H[FieldRef]
-    H --> I[Operator overloading]
-    I --> J[Eq/Gt/Lt/And/Or/Not...]
-
-    C --> K[AggregationStage]
-    K --> L[resolve_agg_refs]
-    L --> M["FieldRef → $field_name"]
-
-    D --> N[_build_update]
-    N --> O["$push / $inc / $set / $pull"]
-
-    B --> P[Index]
-    P --> Q[Settings.indexes]
-    P --> R[__init_indexes__]
-
-    subgraph "Metaclass Layer"
-        S[VellumMetaclass] --> T["__getattr__ (cls.attr → FieldRef)"]
-        S --> U["__init__ (process __init_indexes__)"]
-    end
-```
+![](images/architecture.png)
 
 In Part 3, we'll look at the tradeoffs — what we won, what we lost, and when you should (and shouldn't) use this approach.
