@@ -6,6 +6,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from vellum.hooks import HooksMixin
 
+
+class OptimisticConcurrencyMixin(BaseModel):
+    version: int = 1
+
 T = TypeVar("T", bound="VellumBaseModel")
 
 

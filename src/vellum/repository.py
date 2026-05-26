@@ -7,8 +7,8 @@ from uuid import UUID
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pymongo.results import DeleteResult, InsertOneResult, UpdateResult
 
-from vellum.exceptions import DocumentNotFoundError
-from vellum.model import VellumBaseModel
+from vellum.exceptions import DocumentNotFoundError, OptimisticLockError
+from vellum.model import OptimisticConcurrencyMixin, VellumBaseModel
 
 T = TypeVar("T", bound=VellumBaseModel)
 
@@ -46,11 +46,27 @@ class VellumRepository(Generic[T]):
         query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
         doc = item.to_mongo()
         doc["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
+
+        if isinstance(item, OptimisticConcurrencyMixin):
+            current_version = item.version
+            doc["version"] = current_version + 1
+            mongo_filter = {"_id": query_id, "version": current_version}
+        else:
+            mongo_filter = {"_id": query_id}
+
         result: UpdateResult = await self.collection.update_one(
-            {"_id": query_id}, {"$set": doc}
+            mongo_filter, {"$set": doc}
         )
         if result.matched_count == 0:
+            if isinstance(item, OptimisticConcurrencyMixin):
+                raise OptimisticLockError(
+                    f"Document id={doc_id} was modified by another process (version mismatch)."
+                )
             raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
+
+        if isinstance(item, OptimisticConcurrencyMixin):
+            item.version = current_version + 1
+
         await item.after_update()
         return item
 
