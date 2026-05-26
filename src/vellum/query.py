@@ -1,117 +1,207 @@
-from typing import Any, Dict, List
+from __future__ import annotations
+
+from typing import Any, Dict, Iterable, List, Optional
 from uuid import UUID
 
+MongoFieldPath = str
 
-MongoFilePath=str
+
 class QueryExpression:
+
     def to_mongo_query(self) -> Dict[str, Any]:
-        raise NotImplementedError("Subclasses must implement this method.")
-    def __and__(self,other: 'QueryExpression') -> 'And': # type: ignore
-        return And(self, other) # type: ignore
-    def __or__(self, other: 'QueryExpression') -> 'Or': # type: ignore
-        return Or(self, other) # type: ignore
-    def __invert__(self) -> 'Nor': # type: ignore
-        return Nor(self) # type: ignore
+        raise NotImplementedError
+
+    def __and__(self, other: QueryExpression) -> And:
+        return And(self, other)
+
+    def __or__(self, other: QueryExpression) -> Or:
+        return Or(self, other)
+
+    def __invert__(self) -> Not:
+        return Not(self)
+
+
 class FieldQueryExpression(QueryExpression):
-    def __init__(self, field: MongoFilePath, value: Any | list[Any] | tuple[Any, ...] | set[Any]):
+
+    def __init__(self, field: MongoFieldPath, value: Any) -> None:
         self.field = field
         self.value = value
 
-    def _convert_value_to_mongo(self, value: Any) -> Any:
- 
+    def _to_mongo_value(self, value: Any) -> Any:
         if isinstance(value, UUID):
-            from bson import ObjectId # type: ignore
-            return ObjectId(str(value))
-
+            return str(value)
         return value
+
+
 class Eq(FieldQueryExpression):
     def to_mongo_query(self) -> Dict[str, Any]:
-        return {self.field: self._convert_value_to_mongo(self.value)}
+        return {self.field: self._to_mongo_value(self.value)}
+
 
 class Ne(FieldQueryExpression):
     def to_mongo_query(self) -> Dict[str, Any]:
-        return {self.field: {"$ne": self._convert_value_to_mongo(self.value)}}
+        return {self.field: {"$ne": self._to_mongo_value(self.value)}}
+
 
 class Gt(FieldQueryExpression):
     def to_mongo_query(self) -> Dict[str, Any]:
-        return {self.field: {"$gt": self._convert_value_to_mongo(self.value)}}
+        return {self.field: {"$gt": self._to_mongo_value(self.value)}}
+
 
 class Gte(FieldQueryExpression):
     def to_mongo_query(self) -> Dict[str, Any]:
-        return {self.field: {"$gte": self._convert_value_to_mongo(self.value)}}
+        return {self.field: {"$gte": self._to_mongo_value(self.value)}}
+
 
 class Lt(FieldQueryExpression):
     def to_mongo_query(self) -> Dict[str, Any]:
-        return {self.field: {"$lt": self._convert_value_to_mongo(self.value)}}
+        return {self.field: {"$lt": self._to_mongo_value(self.value)}}
+
 
 class Lte(FieldQueryExpression):
     def to_mongo_query(self) -> Dict[str, Any]:
-        return {self.field: {"$lte": self._convert_value_to_mongo(self.value)}}
+        return {self.field: {"$lte": self._to_mongo_value(self.value)}}
+
 
 class In(FieldQueryExpression):
     def to_mongo_query(self) -> Dict[str, Any]:
         if not isinstance(self.value, (list, tuple, set)):
-            raise TypeError(f"Value for $in operator must be a list, tuple, or set, got {type(self.value)}")
-        converted_values = [self._convert_value_to_mongo(v) for v in self.value] # type: ignore
-        return {self.field: {"$in": converted_values}}
+            raise TypeError(f"$in requires a list/tuple/set, got {type(self.value)}")
+        converted = [self._to_mongo_value(v) for v in self.value]
+        return {self.field: {"$in": converted}}
+
 
 class NotIn(FieldQueryExpression):
     def to_mongo_query(self) -> Dict[str, Any]:
         if not isinstance(self.value, (list, tuple, set)):
-            raise TypeError(f"Value for $nin operator must be a list, tuple, or set, got {type(self.value)}")
-        converted_values = [self._convert_value_to_mongo(v) for v in self.value] # type: ignore
-        return {self.field: {"$nin": converted_values}}
+            raise TypeError(f"$nin requires a list/tuple/set, got {type(self.value)}")
+        converted = [self._to_mongo_value(v) for v in self.value]
+        return {self.field: {"$nin": converted}}
+
+
+class All(FieldQueryExpression):
+    def to_mongo_query(self) -> Dict[str, Any]:
+        if not isinstance(self.value, (list, tuple, set)):
+            raise TypeError(f"$all requires a list/tuple/set, got {type(self.value)}")
+        converted = [self._to_mongo_value(v) for v in self.value]
+        return {self.field: {"$all": converted}}
+
+
+class Size(FieldQueryExpression):
+    def to_mongo_query(self) -> Dict[str, Any]:
+        return {self.field: {"$size": self.value}}
+
+
+class ElemMatch(QueryExpression):
+
+    def __init__(self, field: MongoFieldPath, expression: QueryExpression) -> None:
+        self.field = field
+        self.expression = expression
+
+    def to_mongo_query(self) -> Dict[str, Any]:
+        return {self.field: {"$elemMatch": self.expression.to_mongo_query()}}
+
+
+class Exists(FieldQueryExpression):
+    def to_mongo_query(self) -> Dict[str, Any]:
+        return {self.field: {"$exists": bool(self.value)}}
+
+
+class Regex(QueryExpression):
+
+    def __init__(
+        self, field: MongoFieldPath, pattern: str, options: Optional[str] = None
+    ) -> None:
+        self.field = field
+        self.pattern = pattern
+        self.options = options
+
+    def to_mongo_query(self) -> Dict[str, Any]:
+        expr: Dict[str, Any] = {"$regex": self.pattern}
+        if self.options:
+            expr["$options"] = self.options
+        return {self.field: expr}
+
+
 class LogicalQueryExpression(QueryExpression):
-    def __init__(self, *expressions: QueryExpression):
-        if not all(isinstance(exp, QueryExpression) for exp in expressions): # type: ignore
+
+    def __init__(self, *expressions: QueryExpression) -> None:
+        if not all(isinstance(e, QueryExpression) for e in expressions):
             raise TypeError("All arguments must be QueryExpression instances.")
         self.expressions = expressions
 
+
 class And(LogicalQueryExpression):
-    """Represents a logical AND ($and) operation."""
     def to_mongo_query(self) -> Dict[str, Any]:
-        return {"$and": [exp.to_mongo_query() for exp in self.expressions]}
+        return {"$and": [e.to_mongo_query() for e in self.expressions]}
+
 
 class Or(LogicalQueryExpression):
     def to_mongo_query(self) -> Dict[str, Any]:
-        return {"$or": [exp.to_mongo_query() for exp in self.expressions]}
+        return {"$or": [e.to_mongo_query() for e in self.expressions]}
+
 
 class Nor(LogicalQueryExpression):
     def to_mongo_query(self) -> Dict[str, Any]:
+        return {"$nor": [e.to_mongo_query() for e in self.expressions]}
 
-        return {"$nor": [exp.to_mongo_query() for exp in self.expressions]}
 
-# Helper fucntions
+class Not(LogicalQueryExpression):
 
-def eq(field: MongoFilePath, value: Any) -> Eq:
+    def __init__(self, expression: QueryExpression) -> None:
+        super().__init__(expression)
+
+    def to_mongo_query(self) -> Dict[str, Any]:
+        return {"$nor": [e.to_mongo_query() for e in self.expressions]}
+
+
+def eq(field: MongoFieldPath, value: Any) -> Eq:
     return Eq(field, value)
 
-def ne(field: MongoFilePath, value: Any) -> Ne:
+
+def ne(field: MongoFieldPath, value: Any) -> Ne:
     return Ne(field, value)
 
-def gt(field: MongoFilePath, value: Any) -> Gt:
+
+def gt(field: MongoFieldPath, value: Any) -> Gt:
     return Gt(field, value)
 
-def gte(field: MongoFilePath, value: Any) -> Gte:
+
+def gte(field: MongoFieldPath, value: Any) -> Gte:
     return Gte(field, value)
 
-def lt(field: MongoFilePath, value: Any) -> Lt:
+
+def lt(field: MongoFieldPath, value: Any) -> Lt:
     return Lt(field, value)
 
-def lte(field: MongoFilePath, value: Any) -> Lte:
+
+def lte(field: MongoFieldPath, value: Any) -> Lte:
     return Lte(field, value)
 
-def In_(field: MongoFilePath, values: List[Any]) -> In:
+
+def in_(field: MongoFieldPath, values: List[Any]) -> In:
     return In(field, values)
 
-def NotIn_(field: MongoFilePath, values: List[Any]) -> NotIn:
+
+def not_in(field: MongoFieldPath, values: List[Any]) -> NotIn:
     return NotIn(field, values)
 
-def And_(*expressions: QueryExpression) -> And:
-    return And(*expressions)
 
-def Or_(*expressions: QueryExpression) -> Or:
-    return Or(*expressions)
+def exists(field: MongoFieldPath, value: bool = True) -> Exists:
+    return Exists(field, value)
 
-def Nor_(*expressions: QueryExpression) -> Nor:
-    return Nor(*expressions)    
+
+def regex(field: MongoFieldPath, pattern: str, options: Optional[str] = None) -> Regex:
+    return Regex(field, pattern, options)
+
+
+def size(field: MongoFieldPath, count: int) -> Size:
+    return Size(field, count)
+
+
+def all_(field: MongoFieldPath, values: List[Any]) -> All:
+    return All(field, values)
+
+
+def elem_match(field: MongoFieldPath, expression: QueryExpression) -> ElemMatch:
+    return ElemMatch(field, expression)
