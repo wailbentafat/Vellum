@@ -1,6 +1,6 @@
 [project]
 name = "vellum-odm"
-version = "0.1.0"
+version = "0.1.1"
 description = "The Precision ODM for Asynchronous MongoDB & Pydantic."
 authors = [
     {name = "bentafat wail", email = "150479778+wailbentafat@users.noreply.github.com"}
