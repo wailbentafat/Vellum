@@ -2,61 +2,72 @@
 
 **The Precision ODM for Asynchronous MongoDB & Pydantic.**
 
-Vellum is a type-safe, async Python ODM for MongoDB built on **Pydantic v2** and **Motor**. It provides a clean repository pattern, fluent aggregation builder, lifecycle hooks, optimistic concurrency, soft deletes, and transactions — all with full type hints.
+Vellum is a type-safe, async Python ODM for MongoDB built on Pydantic v2 and Motor. It provides a clean repository pattern, fluent aggregation builder, lifecycle hooks, optimistic concurrency, soft deletes, and transactions — all with full type hints.
 
 ## Features
 
-- **Type-safe queries** — Expression classes for all MongoDB operators (`Eq`, `Gt`, `In`, `Regex`, `ElemMatch`, `Near`, `TextSearch`, ...) with a field-reference DSL (`User.fields.name == "Alice"`)
-- **Fluent aggregation** — `AggregationPipeline` with `match`, `group`, `project`, `sort`, `unwind`, `lookup`, and more; optionally pass an `output_model` for validated results
-- **Lifecycle hooks** — Override `before_insert` / `after_insert` / `before_update` / `after_update` / `before_delete` / `after_delete` on your model
-- **Optimistic Concurrency Control (OCC)** — `OptimisticConcurrencyMixin` for automatic version-based conflict detection
-- **Soft delete** — `SoftDeleteMixin` with automatic filtering of deleted documents
-- **Transactions** — `async with repo.transaction() as session:` for multi-document ACID operations
-- **FastAPI integration** — `repository_factory` for `Depends`-based dependency injection
-- **Bulk operations** — `bulk_create`, `bulk_update`, `bulk_delete` for batch processing
-- **Embedded documents** — Full round-trip support for nested Pydantic models
-- **Server-side schema validation** — Auto-generate `$jsonSchema` validators from your Pydantic model
-- **Aggregation output models** — Pass a Pydantic model to `project()` / `group()` for validated, typed results
+| Feature | Description |
+|---|---|
+| **Type-safe queries** | Expression classes for all MongoDB operators (`Eq`, `Gt`, `In`, `Regex`, `ElemMatch`, Text Search, Geospatial, ...) |
+| **Fluent field references** | Write `Product.price < 10` or `Product.fields.price < 10` |
+| **Fluent aggregation** | `AggregationPipeline` with `match`, `group`, `project`, `sort`, `unwind`, `lookup`, `add_fields`, `count` |
+| **Lifecycle hooks** | `before_insert`, `after_insert`, `before_update`, ... on your model |
+| **Optimistic concurrency** | `OptimisticConcurrencyMixin` — automatic version-based conflict detection |
+| **Soft delete** | `SoftDeleteMixin` — automatic filtering, `soft_delete()` / `restore()` |
+| **Transactions** | `async with repo.transaction() as session:` |
+| **FastAPI integration** | `repository_factory` for `Depends` injection |
+| **Aggregation output models** | Validate aggregation results with Pydantic models |
+| **Migrations** | `MigrationRunner` with up/down, status, rollback |
+| **Caching** | `CachedRepository` with configurable TTL and invalidation |
+| **Encryption** | `EncryptedField` / `encrypted_field` — Fernet-based field encryption |
+| **Schema Doctor** | `SchemaDoctor` — check and repair schema conformance |
+| **Seeding** | `Seeder` / `Factory` — generate test data |
+| **Change streams** | `ChangeStream` — watch MongoDB change events |
+| **Telemetry** | `TracedRepository` — wrap repository with tracing |
 
 ## Quick Start
 
 ```python
+import asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
 from vellum import VellumBaseModel, VellumRepository
 
-
-class User(VellumBaseModel):
+# 1. Define a model
+class Product(VellumBaseModel):
     name: str
-    email: str
+    price: float
 
     class Settings:
-        collection_name = "users"
-        indexes = [{"key": [("email", 1)], "unique": True}]
-
+        collection_name = "products"
 
 async def main():
+    # 2. Connect
     client = AsyncIOMotorClient("mongodb://localhost:27017")
-    repo = VellumRepository(User, client["myapp"])
+    db = client["myapp"]
+    repo = VellumRepository(Product, db)
 
-    user = await repo.create(User(name="Alice", email="alice@example.com"))
-    fetched = await repo.get(user.id)
-    print(fetched.name)  # "Alice"
+    # 3. Create
+    product = Product(name="Widget", price=9.99)
+    created = await repo.create(product)
+    print(f"Created: {created.id}")
 
-    user.email = "alice@newdomain.com"
-    await repo.update(user.id, user)
+    # 4. Read
+    fetched = await repo.get(created.id)
+    print(f"Fetched: {fetched.name}")
 
-    users = await repo.find({"name": "Alice"})
-    await repo.delete(user.id)
+    # 5. Update
+    fetched.price = 24.99
+    updated = await repo.update(fetched.id, fetched)
+
+    # 6. Query with field references
+    results = await repo.find(
+        (Product.price >= 10.0).to_mongo_query()
+    )
+
+    # 7. Delete
+    await repo.delete(created.id)
+
+    client.close()
+
+asyncio.run(main())
 ```
-
-## Installation
-
-```bash
-pip install vellum
-```
-
-Requires Python >= 3.12 and MongoDB >= 4.0. Transactions require a replica set.
-
-## License
-
-MIT
