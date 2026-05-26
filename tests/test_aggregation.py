@@ -4,7 +4,7 @@ import pytest_asyncio
 
 from vellum.aggregation import AggregationPipeline
 from vellum.model import VellumBaseModel
-from vellum.query import FieldRef
+from vellum.query import FieldRef, resolve_agg_refs
 from vellum.repository import VellumRepository
 
 quantity = FieldRef("quantity")
@@ -120,3 +120,64 @@ async def test_pipeline_count_stage(sale_repo):
     results = await pipeline.count_stage("total").execute()
     assert len(results) == 1
     assert results[0]["total"] == 3
+
+
+# --- FieldRef-based aggregation ---
+
+def test_resolve_agg_refs_fieldref():
+    assert resolve_agg_refs(Sale.product) == "$product"
+
+
+def test_resolve_agg_refs_dict():
+    assert resolve_agg_refs({"$sum": Sale.quantity}) == {"$sum": "$quantity"}
+
+
+def test_resolve_agg_refs_nested():
+    expr = {"$multiply": [Sale.price, Sale.quantity]}
+    assert resolve_agg_refs(expr) == {"$multiply": ["$price", "$quantity"]}
+
+
+def test_resolve_agg_refs_list():
+    assert resolve_agg_refs([Sale.product, Sale.price]) == ["$product", "$price"]
+
+
+def test_resolve_agg_refs_str_passthrough():
+    assert resolve_agg_refs("hello") == "hello"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_group_with_fieldref(sale_repo):
+    pipeline = AggregationPipeline(sale_repo.collection)
+    results = await (
+        pipeline
+        .group(Sale.product, total_qty={"$sum": Sale.quantity})
+        .execute()
+    )
+    products = {r["_id"] for r in results}
+    assert "Apple" in products
+    assert "Banana" in products
+
+
+@pytest.mark.asyncio
+async def test_pipeline_unwind_with_fieldref(sale_repo):
+    from motor.motor_asyncio import AsyncIOMotorCollection
+    col: AsyncIOMotorCollection = sale_repo.collection
+    await col.insert_one({
+        "tags": ["fresh", "organic"],
+        "product": "Apple",
+        "quantity": 1,
+        "price": 2.0,
+        "_id": "test-unwind2",
+    })
+    pipeline = AggregationPipeline(col)
+    results = await pipeline.match({"_id": "test-unwind2"}).unwind("$tags").execute()
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_pipeline_add_fields_with_fieldref(sale_repo):
+    pipeline = AggregationPipeline(sale_repo.collection)
+    results = await pipeline.add_fields(
+        {"revenue": {"$multiply": [Sale.price, Sale.quantity]}}
+    ).execute()
+    assert all("revenue" in r for r in results)

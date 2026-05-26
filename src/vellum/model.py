@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic._internal._model_construction import ModelMetaclass
 
 from vellum.hooks import HooksMixin
-from vellum.query import FieldRef, FieldsProxy
+from vellum.query import FieldRef, FieldsProxy, Index
 
 
 class OptimisticConcurrencyMixin(BaseModel):
@@ -33,6 +33,13 @@ class VellumMetaclass(ModelMetaclass):
             f"{cls.__name__} has no attribute {name!r}"
         )
 
+    def __init__(cls, name: str, bases: tuple, namespace: dict, **kwargs: Any) -> None:  # noqa: N805
+        super().__init__(name, bases, namespace, **kwargs)
+        init_indexes = cls.__init_indexes__()
+        if init_indexes:
+            current = getattr(cls.Settings, "indexes", [])
+            cls.Settings.indexes = [*current, *init_indexes]
+
 
 class VellumBaseModel(HooksMixin, BaseModel, metaclass=VellumMetaclass):
 
@@ -48,6 +55,10 @@ class VellumBaseModel(HooksMixin, BaseModel, metaclass=VellumMetaclass):
         super().__init_subclass__(**kwargs)
         cls.fields: FieldsProxy = FieldsProxy(cls)
 
+    @classmethod
+    def __init_indexes__(cls) -> list[Index | dict[str, Any]]:
+        return []
+
     model_config = ConfigDict(
         populate_by_name=True,
         arbitrary_types_allowed=True,
@@ -58,6 +69,7 @@ class VellumBaseModel(HooksMixin, BaseModel, metaclass=VellumMetaclass):
 
     class Settings:
         collection_name: ClassVar[str | None] = None
+        indexes: ClassVar[list[Index | dict[str, Any]]] = []
 
     @classmethod
     def get_collection_name(cls) -> str:

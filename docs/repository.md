@@ -122,6 +122,8 @@ await repo.bulk_delete({"price": 0})
 ## Indexes
 
 ```python
+from vellum import Index
+
 # Create index
 await repo.create_index([("email", 1)], unique=True)
 
@@ -133,6 +135,15 @@ await repo.drop_index("email_1")
 
 # Ensure indexes defined in Settings
 await repo.ensure_indexes()
+```
+
+Indexes in `Settings` support the type-safe `Index` class:
+
+```python
+Index("name")
+Index("email", unique=True)
+Index("name", "price")                          # compound
+Index(SortSpec("name", 1), SortSpec("price", -1))  # with SortSpec
 ```
 
 ## Transactions

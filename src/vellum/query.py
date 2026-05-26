@@ -357,6 +357,15 @@ class FieldRef:
     def desc(self) -> SortSpec:
         return SortSpec(self._field, -1)
 
+def resolve_agg_refs(value: Any) -> Any:
+    if isinstance(value, FieldRef):
+        return f"${value._field}"
+    if isinstance(value, dict):
+        return {k: resolve_agg_refs(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [resolve_agg_refs(v) for v in value]
+    return value
+
 
 def eq(field: MongoFieldPath, value: Any) -> Eq:
     return Eq(field, value)
@@ -443,3 +452,38 @@ def text_search(
     diacritic_sensitive: bool | None = None,
 ) -> TextSearch:
     return TextSearch(search, language, case_sensitive, diacritic_sensitive)
+
+
+class Index:
+    def __init__(self, *fields: FieldRef | SortSpec | str, **options: Any) -> None:
+        self._keys: list[tuple[str, int]] = []
+        for field in fields:
+            if isinstance(field, FieldRef):
+                self._keys.append((field._field, 1))
+            elif isinstance(field, SortSpec):
+                self._keys.append((field.field_name, field.direction))
+            elif isinstance(field, str):
+                self._keys.append((field, 1))
+            else:
+                raise TypeError(
+                    f"Expected FieldRef, SortSpec, or str, got {type(field).__name__}"
+                )
+        self._options = options
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"key": self._keys, **self._options}
+
+    def validate(self, model_cls: type) -> None:
+        valid = set(model_cls.model_fields)
+        for key, _ in self._keys:
+            if key not in valid:
+                raise ValueError(
+                    f"Unknown field {key!r} in index for {model_cls.__name__}. "
+                    f"Valid fields: {sorted(valid)}"
+                )
+
+    @classmethod
+    def resolve(cls, index: Index | dict[str, Any]) -> dict[str, Any]:
+        if isinstance(index, cls):
+            return index.to_dict()
+        return index

@@ -98,9 +98,11 @@ Both produce the same `QueryExpression` objects. See [Queries](queries.md) for d
 
 ## Indexes
 
-Define indexes in `Settings`:
+Define indexes in `Settings` using the type-safe `Index` class:
 
 ```python
+from vellum import Index
+
 class Product(VellumBaseModel):
     name: str
     email: str
@@ -108,12 +110,23 @@ class Product(VellumBaseModel):
     class Settings:
         collection_name = "products"
         indexes = [
-            {"key": [("name", 1)]},
-            {"key": [("email", 1)], "unique": True},
+            Index("name"),
+            Index("email", unique=True),
+            Index("name", "price"),               # compound index
+            Index("created_at", expireAfterSeconds=3600),  # TTL index
         ]
 ```
 
-Create them with:
+Or use the raw dict format (still supported):
+
+```python
+indexes = [
+    {"key": [("name", 1)]},
+    {"key": [("email", 1)], "unique": True},
+]
+```
+
+Field names are validated against the model at runtime. Create indexes with:
 
 ```python
 await repo.ensure_indexes()

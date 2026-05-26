@@ -17,7 +17,7 @@ from pymongo.results import DeleteResult, InsertOneResult, UpdateResult
 from vellum.changestream import ChangeStream
 from vellum.exceptions import DocumentNotFoundError, OptimisticLockError
 from vellum.model import OptimisticConcurrencyMixin, SoftDeleteMixin, VellumBaseModel
-from vellum.query import QueryExpression, SortSpec
+from vellum.query import Index, QueryExpression, SortSpec
 from vellum.querybuilder import QueryBuilder
 from vellum.update import UpdateBuilder
 
@@ -327,7 +327,9 @@ class VellumRepository[T: VellumBaseModel]:
     async def ensure_indexes(self) -> None:
         indexes = getattr(self.model_cls.Settings, "indexes", [])
         for index_spec in indexes:
-            spec = dict(index_spec)
+            if isinstance(index_spec, Index):
+                index_spec.validate(self.model_cls)
+            spec = dict(Index.resolve(index_spec))
             key = spec.pop("key")
             await self.collection.create_index(key, **spec)
 
