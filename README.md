@@ -7,7 +7,7 @@ Vellum is a type-safe, async Python ODM for MongoDB built on Pydantic v2 and Mot
 ## Installation
 
 ```bash
-pip install vellum
+pip install vellum-odm
 ```
 
 ## Quick Start

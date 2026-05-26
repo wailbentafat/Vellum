@@ -1,5 +1,5 @@
 [project]
-name = "vellum"
+name = "vellum-odm"
 version = "0.1.0"
 description = "The Precision ODM for Asynchronous MongoDB & Pydantic."
 authors = [
