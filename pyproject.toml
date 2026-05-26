@@ -3,17 +3,15 @@ name = "vellum"
 version = "0.1.0"
 description = "The Precision ODM for Asynchronous MongoDB & Pydantic."
 authors = [
-    {name = "bentafat wail",email = "150479778+wailbentafat@users.noreply.github.com"}
+    {name = "bentafat wail", email = "150479778+wailbentafat@users.noreply.github.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "pydantic (>=2.0)",
-    "motor (>=3.2,<4.0)",
-    "pymongo (>=4.0,<5.0)",
-    "bson (>=0.5,<1.0)"
+    "pydantic>=2.0",
+    "motor>=3.2,<4.0",
+    "pymongo>=4.0,<5.0",
 ]
-
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
@@ -21,7 +19,10 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.1"
-pytest-asyncio = "^1.0.0"
+pytest-asyncio = "^0.23.0"
 ruff = "^0.12.0"
 mkdocs-material = "^9.6.14"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
