@@ -33,14 +33,14 @@ Repository = "https://github.com/wailbentafat/vellum"
 Documentation = "https://github.com/wailbentafat/vellum"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.4.1"
-pytest-asyncio = "^0.23.0"
-ruff = "^0.12.0"
-mkdocs-material = "^9.6.14"
+[tool.hatch.build.targets.wheel]
+packages = ["src/vellum"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/vellum"]
 
 [tool.ruff]
 line-length = 100
