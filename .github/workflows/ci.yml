@@ -45,7 +45,12 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -56,12 +61,14 @@ jobs:
           version: "latest"
       - run: uv pip install --system mkdocs-material
       - run: mkdocs build --strict
-      - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/main'
-        uses: peaceiris/actions-gh-pages@v4
+      - uses: actions/configure-pages@v4
+      - uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site
+          path: ./site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        if: github.ref == 'refs/heads/main'
+        uses: actions/deploy-pages@v4
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
