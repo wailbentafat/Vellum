@@ -11,6 +11,7 @@ from motor.motor_asyncio import (
     AsyncIOMotorCollection,
     AsyncIOMotorDatabase,
 )
+from pymongo.operations import DeleteOne, UpdateOne
 from pymongo.results import DeleteResult, InsertOneResult, UpdateResult
 
 from vellum.exceptions import DocumentNotFoundError, OptimisticLockError
@@ -119,6 +120,59 @@ class VellumRepository[T: VellumBaseModel]:
             raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
         return self.model_cls.from_mongo(raw)
 
+    async def find_one(
+        self,
+        query: dict[str, Any] = {},
+        sort: list[tuple[str, SortDirection]] | None = None,
+        include_deleted: bool = False,
+    ) -> T | None:
+        effective_query = dict(query)
+        if issubclass(self.model_cls, SoftDeleteMixin) and not include_deleted:
+            effective_query["deleted_at"] = None
+        cursor = self.collection.find(effective_query).limit(1)
+        if sort:
+            cursor = cursor.sort(sort)
+        raw = await cursor.to_list(length=1)
+        if not raw:
+            return None
+        return self.model_cls.from_mongo(raw[0])
+
+    async def find_or_create(
+        self,
+        query: dict[str, Any],
+        defaults: dict[str, Any] = {},
+        include_deleted: bool = False,
+    ) -> T:
+        existing = await self.find_one(query, include_deleted=include_deleted)
+        if existing is not None:
+            return existing
+        merged = {**query, **defaults}
+        item = self.model_cls(**merged)
+        return await self.create(item)
+
+    async def upsert(
+        self,
+        query: dict[str, Any],
+        item: T,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> T:
+        if not isinstance(item, self.model_cls):
+            raise TypeError(f"Expected {self.model_cls.__name__}, got {type(item).__name__}")
+        doc = item.to_mongo()
+        doc["updated_at"] = datetime.datetime.now(datetime.UTC)
+        doc.pop("_id", None)
+        doc.pop("created_at", None)
+        now = datetime.datetime.now(datetime.UTC)
+        result: UpdateResult = await self.collection.update_one(
+            query,
+            {"$set": doc, "$setOnInsert": {"_id": str(item.id), "created_at": now}},
+            upsert=True,
+            session=session,
+        )
+        if result.upserted_id is not None:
+            item.id = UUID(str(result.upserted_id))
+        return item
+
     async def count(self, query: dict[str, Any] = {}, include_deleted: bool = False) -> int:
         effective_query = dict(query)
         if issubclass(self.model_cls, SoftDeleteMixin) and not include_deleted:
@@ -151,9 +205,138 @@ class VellumRepository[T: VellumBaseModel]:
             raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
         return True
 
+    async def bulk_create(
+        self, items: list[T], session: AsyncIOMotorClientSession | None = None
+    ) -> list[T]:
+        for item in items:
+            if not isinstance(item, self.model_cls):
+                raise TypeError(f"Expected {self.model_cls.__name__}, got {type(item).__name__}")
+            await item.before_insert()
+        docs = [item.to_mongo() for item in items]
+        await self.collection.insert_many(docs, session=session)
+        for item in items:
+            await item.after_insert()
+        return items
+
+    async def bulk_update(
+        self, items: list[T], session: AsyncIOMotorClientSession | None = None
+    ) -> list[T]:
+        operations: list[UpdateOne] = []
+        now = datetime.datetime.now(datetime.UTC)
+        for item in items:
+            if not isinstance(item, self.model_cls):
+                raise TypeError(f"Expected {self.model_cls.__name__}, got {type(item).__name__}")
+            await item.before_update()
+            doc = item.to_mongo()
+            doc["updated_at"] = now
+            query_id = str(item.id)
+            operations.append(UpdateOne({"_id": query_id}, {"$set": doc}))
+        await self.collection.bulk_write(operations, session=session)
+        for item in items:
+            await item.after_update()
+        return items
+
+    async def bulk_delete(
+        self,
+        filters: list[dict[str, Any]],
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> int:
+        operations = [DeleteOne(f) for f in filters]
+        result = await self.collection.bulk_write(operations, session=session)
+        return result.deleted_count
+
     async def ensure_indexes(self) -> None:
         indexes = getattr(self.model_cls.Settings, "indexes", [])
         for index_spec in indexes:
             spec = dict(index_spec)
             key = spec.pop("key")
             await self.collection.create_index(key, **spec)
+
+    @staticmethod
+    def _json_type_to_bson(json_type: str | None, fmt: str | None = None) -> str:
+        if fmt == "date-time":
+            return "date"
+        mapping: dict[str, str] = {
+            "string": "string",
+            "number": "double",
+            "integer": "long",
+            "boolean": "bool",
+            "array": "array",
+            "object": "object",
+            "null": "null",
+        }
+        return mapping.get(json_type or "string", "string")
+
+    def _build_json_schema(self) -> dict[str, Any]:
+        schema = self.model_cls.model_json_schema(by_alias=True)
+        properties: dict[str, Any] = {}
+        required: list[str] = []
+        definitions: dict[str, Any] = schema.get("$defs", {})
+
+        for field_name, field_schema in schema.get("properties", {}).items():
+            prop: dict[str, Any] = {}
+            if "$ref" in field_schema:
+                ref_key = field_schema["$ref"].split("/")[-1]
+                ref_schema = definitions.get(ref_key, {})
+                if ref_schema.get("type") == "object":
+                    prop["bsonType"] = "object"
+                    ref_props: dict[str, Any] = {}
+                    for ref_field, ref_fs in ref_schema.get("properties", {}).items():
+                        ref_props[ref_field] = {
+                            "bsonType": self._json_type_to_bson(
+                                ref_fs.get("type"), ref_fs.get("format")
+                            )
+                        }
+                    if ref_props:
+                        prop["properties"] = ref_props
+                else:
+                    prop["bsonType"] = self._json_type_to_bson(
+                        ref_schema.get("type"), ref_schema.get("format")
+                    )
+            elif field_schema.get("type") == "array":
+                prop["bsonType"] = "array"
+                items = field_schema.get("items", {})
+                if "$ref" in items:
+                    prop["description"] = f"Array of {items['$ref'].split('/')[-1]}"
+                elif items.get("type"):
+                    prop["items"] = {
+                        "bsonType": self._json_type_to_bson(
+                            items.get("type"), items.get("format")
+                        )
+                    }
+            else:
+                prop["bsonType"] = self._json_type_to_bson(
+                    field_schema.get("type"), field_schema.get("format")
+                )
+            if field_name in schema.get("required", []):
+                required.append(field_name)
+            properties[field_name] = prop
+
+        return {
+            "$jsonSchema": {
+                "bsonType": "object",
+                "required": required,
+                "properties": properties,
+                "additionalProperties": False,
+            }
+        }
+
+    async def set_schema_validation(self) -> None:
+        validator = self._build_json_schema()
+        collection_name = self.model_cls.get_collection_name()
+        existing = await self.collection.database.list_collection_names()
+        if collection_name in existing:
+            await self.collection.database.command(
+                "collMod",
+                collection_name,
+                validator=validator,
+                validationLevel="strict",
+                validationAction="error",
+            )
+        else:
+            await self.collection.database.create_collection(
+                collection_name,
+                validator=validator,
+                validationLevel="strict",
+                validationAction="error",
+            )

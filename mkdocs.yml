@@ -1,0 +1,12 @@
+site_name: Vellum
+site_description: The Precision ODM for Asynchronous MongoDB & Pydantic
+repo_url: https://github.com/wailbentafat/Vellum
+theme:
+  name: material
+  palette:
+    primary: indigo
+    accent: indigo
+nav:
+  - Home: index.md
+  - Learning Guide: learning.md
+  - Roadmap: roadmap.md

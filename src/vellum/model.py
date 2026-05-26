@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
 from vellum.hooks import HooksMixin
+from vellum.query import FieldsProxy
 
 
 class OptimisticConcurrencyMixin(BaseModel):
@@ -29,6 +30,10 @@ class VellumBaseModel(HooksMixin, BaseModel):
     updated_at: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        cls.fields: FieldsProxy = FieldsProxy(cls)
 
     model_config = ConfigDict(
         populate_by_name=True,
