@@ -1,112 +1,83 @@
-from typing import Generic, Tuple, TypeVar
-from vellum.model import VellumBaseModel
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union
+from __future__ import annotations
+
+import datetime
+from typing import Any, Dict, Generic, List, Optional, Tuple, Type, TypeVar, Union
 from uuid import UUID
 
-from motor.motor_asyncio import  AsyncIOMotorDatabase, AsyncIOMotorCollection # type: ignore
-from pymongo.results import InsertOneResult, UpdateResult, DeleteResult
-from bson import ObjectId # type: ignore
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
+from pymongo.results import DeleteResult, InsertOneResult, UpdateResult
+
+from vellum.exceptions import DocumentNotFoundError
+from vellum.model import VellumBaseModel
+
+T = TypeVar("T", bound=VellumBaseModel)
+
+SortDirection = int
 
 
-T = TypeVar('T', bound=VellumBaseModel)
-class DocumentNotFoundError(Exception):
-    pass
 class VellumRepository(Generic[T]):
-    def __init__(
-                  self,model_cls:Type[T]
-                 ,database:AsyncIOMotorDatabase # type: ignore
-                 ):
-        # The type constraint on T ensures model_cls is a subclass of VellumBaseModel
-        
-        self.model_cls:Type[T] = model_cls
-        self.collection: AsyncIOMotorCollection[Dict[str, Any]] = database[model_cls.get_collection_name()] # type: ignore
-    
-    async def create(self,item:T)->T:
-        if not isinstance(item, self.model_cls):
-            raise TypeError(f"item must be an instance of {self.model_cls}, got {type(item)}")
-        doc_data=item.to_mongo()
-        result:InsertOneResult=await self.collection.insert_one(doc_data)
-        if result.inserted_id:
-            pass
-        return item
-    async def get(self, id: Union[UUID, str,ObjectId]) -> Optional[T]:
-        if isinstance(id, UUID):
-            query_id = ObjectId(str(id))
-        elif isinstance(id, str):
-            try:
-                query_id = ObjectId(id)
-            except Exception:
-                raise ValueError(f"Invalid ID format: {id}. Must be a valid UUID string or ObjectId string.")
-        elif isinstance(id, ObjectId): # type: ignore
-            query_id = id
-        else:
-            raise TypeError(f"Invalid type for document_id: {type(id)}. Expected UUID, str, or ObjectId.")
-  
-        document_data: Optional[Dict[str, Any]] = await self.collection.find_one({"_id": query_id})
-        if document_data is None:
-            raise DocumentNotFoundError(f"Document with ID {id} not found.")  
-      
-        return self.model_cls.from_mongo(document_data)  
 
-    async def update(self, id: Union[UUID, str,ObjectId], item:T) -> Optional[T]:
+    def __init__(self, model_cls: Type[T], database: AsyncIOMotorDatabase) -> None:
+        self.model_cls = model_cls
+        self.collection: AsyncIOMotorCollection = database[model_cls.get_collection_name()]
+
+    async def create(self, item: T) -> T:
         if not isinstance(item, self.model_cls):
-            raise TypeError(f"item must be an instance of {self.model_cls}, got {type(item)}")
-        if isinstance(id, UUID):
-            query_id = ObjectId(str(id))
-        elif isinstance(id, str):
-            try:
-                query_id = ObjectId(str(UUID(id)))
-            except Exception: 
-                raise ValueError(f"Invalid ID format: {id}. Must be a valid UUID string or ObjectId string.")
-        elif isinstance(id, ObjectId): # type: ignore
-            query_id = id
-        else:
-            raise TypeError(f"Invalid type for document_id: {type(id)}. Expected UUID, str, or ObjectId.")
-        doc_data = item.to_mongo()
-        result: UpdateResult = await self.collection.update_one({"_id": query_id}, {"$set": doc_data})
-        if result.modified_count == 0:
-            raise DocumentNotFoundError(f"Document with ID {id} not found or no changes made.")
+            raise TypeError(f"Expected {self.model_cls.__name__}, got {type(item).__name__}")
+        doc = item.to_mongo()
+        result: InsertOneResult = await self.collection.insert_one(doc)
+        if not result.inserted_id:
+            raise RuntimeError("Insert did not return an inserted_id")
         return item
-    async def delete(self, id: Union[UUID, str,ObjectId]) -> bool:  
-        if isinstance(id, UUID):
-            query_id = ObjectId(str(id))
-        elif isinstance(id, str):   
-            try:
-                query_id = ObjectId(id)
-            except Exception:
-                raise ValueError(f"Invalid ID format: {id}. Must be a valid UUID string or ObjectId string.")
-        elif isinstance(id, ObjectId): # type: ignore
-            query_id = id
-        else:
-            raise TypeError(f"Invalid type for document_id: {type(id)}. Expected UUID, str, or ObjectId.")
+
+    async def get(self, doc_id: Union[UUID, str]) -> T:
+        query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
+        raw: Optional[Dict[str, Any]] = await self.collection.find_one({"_id": query_id})
+        if raw is None:
+            raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
+        return self.model_cls.from_mongo(raw)
+
+    async def update(self, doc_id: Union[UUID, str], item: T) -> T:
+        if not isinstance(item, self.model_cls):
+            raise TypeError(f"Expected {self.model_cls.__name__}, got {type(item).__name__}")
+        query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
+        doc = item.to_mongo()
+        doc["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
+        result: UpdateResult = await self.collection.update_one(
+            {"_id": query_id}, {"$set": doc}
+        )
+        if result.matched_count == 0:
+            raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
+        return item
+
+    async def delete(self, doc_id: Union[UUID, str]) -> bool:
+        query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
         result: DeleteResult = await self.collection.delete_one({"_id": query_id})
         if result.deleted_count == 0:
-            raise DocumentNotFoundError(f"Document with ID {id} not found.")
+            raise DocumentNotFoundError(f"Document with id={doc_id} not found.")
         return True
+
     async def find(
         self,
         query: Dict[str, Any] = {},
         skip: int = 0,
         limit: int = 0,
-        sort: Optional[List[Tuple[str, int]]] = None,
-    )->List[T]:
-        #add type safety for the query and the sort
-        processed_query:Dict[str,Any]={}
-        for key,value in processed_query:
-            if isinstance(value, UUID):
-                processed_query[key] = ObjectId(str(value))
-            elif isinstance(value, dict): # type: ignore
-                    processed_query[key] = value
-            else:        
-                    processed_query[key] = value
-        if limit < 0:
-                limit = 0
-        if skip < 0:
-             skip = 0            
-        cursor = self.collection.find(processed_query).skip(skip).limit(limit)
+        sort: Optional[List[Tuple[str, SortDirection]]] = None,
+    ) -> List[T]:
+        skip = max(skip, 0)
+        limit = max(limit, 0)
+        cursor = self.collection.find(query).skip(skip).limit(limit)
         if sort:
             cursor = cursor.sort(sort)
-        document:List[dict[str,Any]]=await cursor.to_list(length=limit if limit > 0 else None)
-        return [self.model_cls.from_mongo(doc) for doc in document]            
-       
-         
+        raw_docs: List[Dict[str, Any]] = await cursor.to_list(length=None)
+        return [self.model_cls.from_mongo(doc) for doc in raw_docs]
+
+    async def count(self, query: Dict[str, Any] = {}) -> int:
+        return await self.collection.count_documents(query)
+
+    async def ensure_indexes(self) -> None:
+        indexes = getattr(self.model_cls.Settings, "indexes", [])
+        for index_spec in indexes:
+            spec = dict(index_spec)
+            key = spec.pop("key")
+            await self.collection.create_index(key, **spec)
