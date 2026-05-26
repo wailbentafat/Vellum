@@ -16,3 +16,7 @@ nav:
   - Aggregation: aggregation.md
   - Updates: updates.md
   - Advanced: advanced.md
+  - Blog:
+    - "Part 1: Typing MongoDB at the Speed of Thought": blog/part-1-typing-mongodb.md
+    - "Part 2: Architecture Decisions That Almost Broke Us": blog/part-2-architecture.md
+    - "Part 3: What We Won, What We Lost": blog/part-3-tradeoffs.md
