@@ -4,7 +4,10 @@ import pytest_asyncio
 
 from vellum.aggregation import AggregationPipeline
 from vellum.model import VellumBaseModel
+from vellum.query import FieldRef
 from vellum.repository import VellumRepository
+
+quantity = FieldRef("quantity")
 
 
 class Sale(VellumBaseModel):
@@ -40,7 +43,7 @@ async def test_pipeline_match(sale_repo):
 @pytest.mark.asyncio
 async def test_pipeline_sort_limit(sale_repo):
     pipeline = AggregationPipeline(sale_repo.collection)
-    results = await pipeline.sort([("quantity", -1)]).limit(1).execute()
+    results = await pipeline.sort(quantity.desc()).limit(1).execute()
     assert len(results) == 1
     assert results[0]["quantity"] == 20
 
@@ -48,7 +51,7 @@ async def test_pipeline_sort_limit(sale_repo):
 @pytest.mark.asyncio
 async def test_pipeline_skip(sale_repo):
     pipeline = AggregationPipeline(sale_repo.collection)
-    results = await pipeline.sort([("quantity", 1)]).skip(1).execute()
+    results = await pipeline.sort(quantity.asc()).skip(1).execute()
     assert len(results) == 2
 
 

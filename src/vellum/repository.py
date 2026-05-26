@@ -14,12 +14,15 @@ from motor.motor_asyncio import (
 from pymongo.operations import DeleteOne, UpdateOne
 from pymongo.results import DeleteResult, InsertOneResult, UpdateResult
 
+from vellum.changestream import ChangeStream
 from vellum.exceptions import DocumentNotFoundError, OptimisticLockError
 from vellum.model import OptimisticConcurrencyMixin, SoftDeleteMixin, VellumBaseModel
-from vellum.query import QueryExpression
+from vellum.query import QueryExpression, SortSpec
+from vellum.querybuilder import QueryBuilder
 from vellum.update import UpdateBuilder
 
 SortDirection = int
+SortInput = SortSpec | tuple[str, int]
 
 QueryInput = QueryExpression | dict[str, Any]
 
@@ -109,7 +112,7 @@ class VellumRepository[T: VellumBaseModel]:
         query: QueryInput = {},
         skip: int = 0,
         limit: int = 0,
-        sort: list[tuple[str, SortDirection]] | None = None,
+        sort: list[SortSpec] | None = None,
         include_deleted: bool = False,
     ) -> list[T]:
         skip = max(skip, 0)
@@ -119,14 +122,14 @@ class VellumRepository[T: VellumBaseModel]:
             effective_query["deleted_at"] = None
         cursor = self.collection.find(effective_query).skip(skip).limit(limit)
         if sort:
-            cursor = cursor.sort(sort)
+            cursor = cursor.sort([(s.field_name, s.direction) for s in sort])
         raw_docs: list[dict[str, Any]] = await cursor.to_list(length=None)
         return [self.model_cls.from_mongo(doc) for doc in raw_docs]
 
     async def find_cursor(
         self,
         query: QueryInput = {},
-        sort: list[tuple[str, SortDirection]] | None = None,
+        sort: list[SortSpec] | None = None,
         batch_size: int = 100,
         include_deleted: bool = False,
     ) -> AsyncGenerator[T, None]:
@@ -135,9 +138,20 @@ class VellumRepository[T: VellumBaseModel]:
             effective_query["deleted_at"] = None
         cursor = self.collection.find(effective_query, batch_size=batch_size)
         if sort:
-            cursor = cursor.sort(sort)
+            cursor = cursor.sort([(s.field_name, s.direction) for s in sort])
         async for doc in cursor:
             yield self.model_cls.from_mongo(doc)
+
+    def query(self) -> QueryBuilder[T]:
+        return QueryBuilder(self.model_cls, self.collection)
+
+    def watch(
+        self,
+        pipeline: list[dict[str, Any]] | None = None,
+        **kwargs: Any,
+    ) -> ChangeStream[T]:
+        raw_stream = self.collection.watch(pipeline or [], **kwargs)
+        return ChangeStream(self.model_cls, raw_stream)
 
     async def get(self, doc_id: UUID | str, include_deleted: bool = False) -> T:
         query_id = str(doc_id) if isinstance(doc_id, UUID) else doc_id
@@ -152,7 +166,7 @@ class VellumRepository[T: VellumBaseModel]:
     async def find_one(
         self,
         query: QueryInput = {},
-        sort: list[tuple[str, SortDirection]] | None = None,
+        sort: list[SortSpec] | None = None,
         include_deleted: bool = False,
     ) -> T | None:
         effective_query = self._resolve_query(query)
@@ -160,7 +174,7 @@ class VellumRepository[T: VellumBaseModel]:
             effective_query["deleted_at"] = None
         cursor = self.collection.find(effective_query).limit(1)
         if sort:
-            cursor = cursor.sort(sort)
+            cursor = cursor.sort([(s.field_name, s.direction) for s in sort])
         raw = await cursor.to_list(length=1)
         if not raw:
             return None
@@ -202,6 +216,41 @@ class VellumRepository[T: VellumBaseModel]:
         if result.upserted_id is not None:
             item.id = UUID(str(result.upserted_id))
         return item
+
+    async def populate(
+        self,
+        item: T,
+        field_name: str,
+        repo: VellumRepository,
+    ) -> T:
+        field_value = getattr(item, field_name, None)
+        if field_value is None:
+            return item
+        if isinstance(field_value, UUID):
+            referenced = await repo.get(field_value)
+            setattr(item, field_name, referenced)
+        return item
+
+    async def populate_many(
+        self,
+        items: list[T],
+        field_name: str,
+        repo: VellumRepository,
+    ) -> list[T]:
+        ids: set[UUID] = set()
+        for item in items:
+            val = getattr(item, field_name, None)
+            if isinstance(val, UUID):
+                ids.add(val)
+        if not ids:
+            return items
+        refs = await repo.find({"_id": {"$in": [str(i) for i in ids]}})
+        ref_map = {r.id: r for r in refs}
+        for item in items:
+            val = getattr(item, field_name, None)
+            if isinstance(val, UUID) and val in ref_map:
+                setattr(item, field_name, ref_map[val])
+        return items
 
     async def count(self, query: QueryInput = {}, include_deleted: bool = False) -> int:
         effective_query = self._resolve_query(query)
@@ -281,6 +330,20 @@ class VellumRepository[T: VellumBaseModel]:
             spec = dict(index_spec)
             key = spec.pop("key")
             await self.collection.create_index(key, **spec)
+
+    async def create_index(
+        self,
+        keys: list[tuple[str, int]],
+        **kwargs: Any,
+    ) -> str:
+        return await self.collection.create_index(keys, **kwargs)
+
+    async def drop_index(self, name: str) -> None:
+        await self.collection.drop_index(name)
+
+    async def list_indexes(self) -> list[dict[str, Any]]:
+        cursor = self.collection.list_indexes()
+        return [idx async for idx in cursor]
 
     @staticmethod
     def _json_type_to_bson(json_type: str | None, fmt: str | None = None) -> str:

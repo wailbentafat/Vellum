@@ -26,31 +26,27 @@ class UpdateBuilder[T]:
         self._pushes: dict[str, Any] = {}
         self._pull: dict[str, Any] = {}
 
-    def set(self, field: FieldRef | str, value: Any) -> UpdateBuilder[T]:
-        name = field._field if isinstance(field, FieldRef) else field
-        self._sets[name] = value
+    def set(self, field: FieldRef, value: Any) -> UpdateBuilder[T]:
+        self._sets[field._field] = value
         return self
 
-    def unset(self, field: FieldRef | str) -> UpdateBuilder[T]:
-        name = field._field if isinstance(field, FieldRef) else field
-        self._unsets.append(name)
+    def unset(self, field: FieldRef) -> UpdateBuilder[T]:
+        self._unsets.append(field._field)
         return self
 
-    def inc(self, field: FieldRef | str, amount: int | float) -> UpdateBuilder[T]:
-        name = field._field if isinstance(field, FieldRef) else field
-        self._incs[name] = amount
+    def inc(self, field: FieldRef, amount: int | float) -> UpdateBuilder[T]:
+        self._incs[field._field] = amount
         return self
 
-    def push(self, field: FieldRef | str, value: Any) -> UpdateBuilder[T]:
-        name = field._field if isinstance(field, FieldRef) else field
-        if name not in self._pushes:
-            self._pushes[name] = []
-        self._pushes[name].append(value)
+    def push(self, field: FieldRef, value: Any) -> UpdateBuilder[T]:
+        f = field._field
+        if f not in self._pushes:
+            self._pushes[f] = []
+        self._pushes[f].append(value)
         return self
 
-    def pull(self, field: FieldRef | str, value: Any) -> UpdateBuilder[T]:
-        name = field._field if isinstance(field, FieldRef) else field
-        self._pull[name] = value
+    def pull(self, field: FieldRef, value: Any) -> UpdateBuilder[T]:
+        self._pull[field._field] = value
         return self
 
     def _build_update(self) -> dict[str, Any]:

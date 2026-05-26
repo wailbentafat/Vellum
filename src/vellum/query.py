@@ -1,9 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
 from uuid import UUID
 
 MongoFieldPath = str
+
+
+class SortSpec(NamedTuple):
+    field_name: str
+    direction: int
 
 
 class QueryExpression:
@@ -339,6 +344,12 @@ class FieldRef:
 
     def geo_intersects(self, geometry: GeoJSONType) -> GeoIntersects:
         return GeoIntersects(self._field, geometry)
+
+    def asc(self) -> SortSpec:
+        return SortSpec(self._field, 1)
+
+    def desc(self) -> SortSpec:
+        return SortSpec(self._field, -1)
 
 
 def eq(field: MongoFieldPath, value: Any) -> Eq:

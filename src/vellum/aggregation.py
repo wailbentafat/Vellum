@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import Any, Generic, TypeVar
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import BaseModel
 
-from vellum.query import QueryExpression
+from vellum.query import QueryExpression, SortSpec
 
 InputT = TypeVar("InputT", bound=BaseModel)
 OutputT = TypeVar("OutputT")
@@ -51,9 +50,10 @@ class AggregationPipeline(Generic[InputT, OutputT]):  # noqa: UP046
         return new
 
     def sort(
-        self, sort_spec: Sequence[tuple[str, int]]
+        self, *specs: SortSpec
     ) -> AggregationPipeline[InputT, OutputT]:
-        self._stages.append({"$sort": dict(sort_spec)})
+        sort_dict = {s.field_name: s.direction for s in specs}
+        self._stages.append({"$sort": sort_dict})
         return self
 
     def limit(self, n: int) -> AggregationPipeline[InputT, OutputT]:

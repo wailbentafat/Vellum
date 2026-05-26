@@ -119,7 +119,7 @@ async def test_find_one_returns_document(repo):
 async def test_find_one_with_sort(repo):
     await repo.create(Product(name="B", price=2.0))
     await repo.create(Product(name="A", price=1.0))
-    result = await repo.find_one(sort=[("name", 1)])
+    result = await repo.find_one(sort=[Product.fields.name.asc()])
     assert result is not None
     assert result.name == "A"
 
@@ -264,7 +264,7 @@ async def test_update_builder_unset(repo):
 @pytest.mark.asyncio
 async def test_update_builder_string_field(repo):
     product = await repo.create(Product(name="StringRef", price=5.0))
-    result = await repo.update_builder(product.id).set("price", 42.0).execute()
+    result = await repo.update_builder(product.id).set(Product.fields.price, 42.0).execute()
     assert result is not None
     assert result["price"] == 42.0
 
@@ -273,7 +273,7 @@ async def test_update_builder_string_field(repo):
 async def test_find_cursor_returns_all(repo):
     for i in range(5):
         await repo.create(Product(name=f"Cursor{i}", price=float(i)))
-    names = [p async for p in repo.find_cursor(sort=[("name", 1)])]
+    names = [p async for p in repo.find_cursor(sort=[Product.fields.name.asc()])]
     assert len(names) == 5
     assert names[0].name == "Cursor0"
     assert names[4].name == "Cursor4"
