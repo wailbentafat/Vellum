@@ -5,7 +5,6 @@ Requires a running MongoDB instance (mongodb://localhost:27017).
 """
 
 import asyncio
-from datetime import datetime, timedelta, UTC
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -147,7 +146,6 @@ async def main():
     print(f"Restored: {restored.name}")
 
     # --- Aggregation ---
-    today = datetime.now(UTC)
     await order_repo.create(Order(
         product_id=str(laptop.id), quantity=2, total=2599.98
     ))

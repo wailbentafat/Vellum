@@ -1,21 +1,13 @@
 from __future__ import annotations
 
-import pytest
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 
 from vellum import (
-    All,
-    And,
-    Eq,
-    Gt,
-    Gte,
-    In,
     Index,
-    Lt,
-    Lte,
-    Ne,
-    NotIn,
-    Regex,
-    Size,
     SortSpec,
     VellumBaseModel,
     resolve_agg_refs,
